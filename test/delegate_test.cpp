@@ -71,9 +71,18 @@ TEST(delegate, nulltests)
 
     bool t2 = del;
     EXPECT_TRUE(t2);
+
+    del.clear();
+    EXPECT_FALSE(del);
+
+    del.set(f);
+    EXPECT_TRUE(del);
+
+    del = delegate<void()>{};
+    EXPECT_FALSE(del);
 }
 
-TEST(delegate, Functor_const)
+TEST(delegate, Functor_const_variants)
 {
     struct Functor
     {
@@ -82,30 +91,43 @@ TEST(delegate, Functor_const)
 
     Functor f;
     delegate<void()> del;
+    del.set(f);
+    f();
     del.set<Functor>(f);
     f();
 
     // Must not work. require operator() const
     const Functor f2;
     (void)f2;
+    // del.set(f2);
     // del.set<Functor>(f2);
 
     // Must not work
     // del.set<Functor>(Functor{});
+    // del.set(Functor{});
 
     // Test with const.
-    struct Functor2
+    struct cFunctor
     {
         void operator()() const {};
     };
 
     // Ok, got operator() const
-    const Functor2 f3;
-    del.set<Functor2>(f3);
+    cFunctor f3;
+    del.set<cFunctor>(f3);
     f3();
+    del.set(f3);
+    f3();
+
+    const cFunctor f4;
+    del.set<cFunctor>(f4);
+    f4();
+    del.set(f4);
+    f4();
 
     // Must not work
     // del.set<Functor2>(Functor2{});
+    // del.set(Functor2{});
 }
 
 void
