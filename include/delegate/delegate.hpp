@@ -8,8 +8,8 @@
 #ifndef DELEGATE_DELEGATE_HPP_
 #define DELEGATE_DELEGATE_HPP_
 
-#include <utility>
 #include <memory>
+#include <utility>
 
 /**
  * Simple storage of a callable object for free and member functions.
@@ -64,29 +64,7 @@ nullReturnFunction()
 {
     return;
 }
-
-// Helper struct to make sure no temporary values are passed.
-// Accept res and const ref but not r-value references.
-template<typename T>
-struct NonTemporaryRef;
-
-template<typename T>
-struct NonTemporaryRef<const T>
-{
-	NonTemporaryRef(const T& ref) : obj_p(&ref) {}
-	const T* obj_p;
-};
-
-template<typename T>
-struct NonTemporaryRef
-{
-	NonTemporaryRef(T& ref) : obj_p(&ref) {}
-	NonTemporaryRef(T&& ref) = delete;
-
-	T* obj_p;
-};
-
-}
+} // namespace details
 
 /**
  * Class for storing the callable object
@@ -162,7 +140,7 @@ class delegate<R(Args...)>
 
   public:
     // Default construct with stored ptr == nullptr.
-    constexpr delegate(const std::nullptr_t& nptr = nullptr)
+    constexpr delegate(const std::nullptr_t& nptr = nullptr) noexcept
         : m_cb(&doNullFkn), m_ptr(nullptr){};
 
     ~delegate() = default;
@@ -174,12 +152,12 @@ class delegate<R(Args...)>
         return m_cb(m_ptr, args...);
     }
 
-    constexpr bool equal(const delegate& rhs) const
+    constexpr bool equal(const delegate& rhs) const noexcept
     {
         return m_cb == rhs.m_cb && m_ptr == rhs.m_ptr;
     }
 
-    constexpr bool null() const
+    constexpr bool null() const noexcept
     {
         return m_cb == doNullFkn;
     }
@@ -215,20 +193,27 @@ class delegate<R(Args...)>
      * Create a callback to a member function to a given object.
      */
     template <class T, R (T::*memFkn)(Args... args)>
-    constexpr delegate& set(details::NonTemporaryRef<T> tr)
+    constexpr delegate& set(T& tr)
     {
         m_cb = &doMemberCB<T, memFkn>;
-        m_ptr = static_cast<void*>(tr.obj_p);
+        m_ptr = static_cast<void*>(&tr);
         return *this;
     }
 
     template <class T, R (T::*memFkn)(Args... args) const>
-    constexpr delegate& set(details::NonTemporaryRef<const T> tr)
+    constexpr delegate& set(T const& tr)
     {
         m_cb = &doConstMemberCB<T, memFkn>;
-        m_ptr = const_cast<void*>(static_cast<const void*>(tr.obj_p));
+        m_ptr = const_cast<void*>(static_cast<const void*>(&tr));
         return *this;
     }
+
+    // Delete rvalues. Not interested in temporaries.
+    template <class T, R (T::*memFkn)(Args... args)>
+    constexpr delegate& set(T&&) = delete;
+
+    template <class T, R (T::*memFkn)(Args... args) const>
+    constexpr delegate& set(T&&) = delete;
 
     /**
      * Create a callback to a Functor or a lambda.
@@ -237,20 +222,24 @@ class delegate<R(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    constexpr delegate& set(details::NonTemporaryRef<T> tr)
+    constexpr delegate& set(T& tr)
     {
         m_cb = &doFunctor<T>;
-        m_ptr = static_cast<void*>(tr.obj_p);
+        m_ptr = static_cast<void*>(&tr);
         return *this;
     }
 
     template <class T>
-    constexpr delegate& set(details::NonTemporaryRef<const T> tr)
+    constexpr delegate& set(T const& tr)
     {
         m_cb = &doConstFunctor<T>;
-        m_ptr = const_cast<void*>(static_cast<const void*>(tr.obj_p));
+        m_ptr = const_cast<void*>(static_cast<const void*>(&tr));
         return *this;
     }
+
+    // Do not allow temporaries to be stored.
+    template <class T>
+    constexpr delegate& set(T&&) = delete;
 
     /**
      * Create a callback to a free function with a specific type on
@@ -259,8 +248,8 @@ class delegate<R(Args...)>
     template <R (*fkn)(Args... args)>
     static constexpr delegate make()
     {
-    	delegate del;
-    	return del.set<fkn>();
+        delegate del;
+        return del.set<fkn>();
     }
 
     /**
@@ -269,15 +258,15 @@ class delegate<R(Args...)>
     template <class T, R (T::*memFkn)(Args... args) const>
     static constexpr delegate make(const T& object)
     {
-    	delegate del;
-    	return del.set<const T, memFkn>(object);
+        delegate del;
+        return del.set<const T, memFkn>(object);
     }
 
     template <class T, R (T::*memFkn)(Args... args)>
     static constexpr delegate make(T& object)
     {
-    	delegate del;
-    	return del.set<T, memFkn>(object);
+        delegate del;
+        return del.set<T, memFkn>(object);
     }
 
     /**
@@ -289,11 +278,10 @@ class delegate<R(Args...)>
     template <class T>
     static constexpr delegate make(T&& object)
     {
-    	delegate del;
-    	using T_ = std::remove_reference_t<T>;
-        return del.set<T_>(details::NonTemporaryRef<T_>(object));
+        delegate del;
+        del.set(object);
+        return del;
     }
-
 
     /**
      * Create a callback to a free function with a specific type on

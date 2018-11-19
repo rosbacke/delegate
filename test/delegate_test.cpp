@@ -6,10 +6,106 @@
 
 #include <gtest/gtest.h>
 
-
 TEST(Test_framework, test1)
 {
     EXPECT_TRUE(true);
+}
+
+struct TestReturn
+{
+    ~TestReturn()
+    {
+        val++;
+    }
+    static int val;
+};
+
+int TestReturn::val = 0;
+
+TEST(delegate, construction1)
+{
+    // Default construct, Can call default constructed.
+    delegate<void()> del;
+    // And call.
+    del();
+
+    // Make sure we get a default constructed return value.
+    delegate<TestReturn()> del2;
+
+    EXPECT_EQ(TestReturn::val, 0);
+    del2();
+    EXPECT_EQ(TestReturn::val, 1);
+}
+
+TEST(delegate, nulltests)
+{
+    // Default construct, Can call default constructed.
+    delegate<void()> del;
+
+    EXPECT_FALSE(del);
+
+    EXPECT_TRUE(del == nullptr);
+    EXPECT_TRUE(nullptr == del);
+
+    EXPECT_FALSE(del != nullptr);
+    EXPECT_FALSE(nullptr != del);
+
+    bool t = del;
+    EXPECT_FALSE(t);
+
+    struct Functor
+    {
+        void operator()() {}
+    };
+
+    Functor f;
+    del.set<Functor>(f);
+
+    EXPECT_TRUE(del);
+
+    EXPECT_FALSE(del == nullptr);
+    EXPECT_FALSE(nullptr == del);
+
+    EXPECT_TRUE(del != nullptr);
+    EXPECT_TRUE(nullptr != del);
+
+    bool t2 = del;
+    EXPECT_TRUE(t2);
+}
+
+TEST(delegate, Functor_const)
+{
+    struct Functor
+    {
+        void operator()(){};
+    };
+
+    Functor f;
+    delegate<void()> del;
+    del.set<Functor>(f);
+    f();
+
+    // Must not work. require operator() const
+    const Functor f2;
+    (void)f2;
+    // del.set<Functor>(f2);
+
+    // Must not work
+    // del.set<Functor>(Functor{});
+
+    // Test with const.
+    struct Functor2
+    {
+        void operator()() const {};
+    };
+
+    // Ok, got operator() const
+    const Functor2 f3;
+    del.set<Functor2>(f3);
+    f3();
+
+    // Must not work
+    // del.set<Functor2>(Functor2{});
 }
 
 void
@@ -103,8 +199,8 @@ testFreeFunction()
 
 struct TestObj
 {
-	TestObj() = default;
-	TestObj(int x) : m_val(x) {}
+    TestObj() = default;
+    TestObj(int x) : m_val(x) {}
 
     int m_val = 3;
 
@@ -173,7 +269,7 @@ testMemberFunction()
 
 TEST(delegate, testMemberFunctionConst)
 {
-	const TestObj o(6);
+    const TestObj o(6);
 
     // Create member function callback.
     auto cb = delegate<int(int)>::make<TestObj, &TestObj::addc>(o);
@@ -199,7 +295,7 @@ TEST(delegate, testMemberFunctionConst)
 
 TEST(delegate, testMemberFunctionConst2)
 {
-	TestObj o(6);
+    TestObj o(6);
 
     // Create member function callback.
     auto cb = delegate<int(int)>::make<TestObj, &TestObj::addc>(o);
@@ -222,7 +318,6 @@ TEST(delegate, testMemberFunctionConst2)
 
     // Try const member functions on non const obj.
 }
-
 
 void
 testLambdaFunction()
@@ -259,7 +354,6 @@ testLambdaFunction()
     res = cb4(6, 5);
     assert(res == 11);
 }
-
 
 TEST(delegate, testLambdaConstFunctionConst2)
 {

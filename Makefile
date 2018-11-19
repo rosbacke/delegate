@@ -8,3 +8,8 @@ delegate_test.out: test/delegate_test.cpp include/delegate/delegate.hpp
 
 run_test: delegate_test.out
 	./delegate_test.out
+
+.PHONY: format
+format:
+	clang-format-6.0 -i include/delegate/delegate.hpp
+	clang-format-6.0 -i test/delegate_test.cpp
