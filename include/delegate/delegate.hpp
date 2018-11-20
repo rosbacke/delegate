@@ -47,8 +47,16 @@
  * with a null value is a no-op and the possibly returned value is
  * a default constructed object of the relevant type.
  */
-template <typename T>
-class delegate;
+
+#if __cplusplus < 201103L
+#error "Require at least C++11 to compile delegate"
+#endif
+
+#if __cplusplus >= 201402L
+#define DELEGATE_CXX14CONSTEXPR constexpr
+#else
+#define DELEGATE_CXX14CONSTEXPR
+#endif
 
 namespace details
 {
@@ -65,6 +73,9 @@ nullReturnFunction()
     return;
 }
 } // namespace details
+
+template <typename T>
+class delegate;
 
 /**
  * Class for storing the callable object
@@ -168,7 +179,7 @@ class delegate<R(Args...)>
         return !null();
     }
 
-    constexpr void clear()
+    DELEGATE_CXX14CONSTEXPR void clear()
     {
         m_cb = doNullFkn;
         m_ptr = nullptr;
@@ -179,12 +190,9 @@ class delegate<R(Args...)>
      * the pointer.
      */
     template <R (*fkn)(Args... args)>
-    constexpr delegate& set()
+    DELEGATE_CXX14CONSTEXPR delegate& set()
     {
-        if (fkn)
-            m_cb = &doFreeCB<fkn>;
-        else
-            m_cb = &doNullFkn;
+        m_cb = fkn ? &doFreeCB<fkn> : &doNullFkn;
         m_ptr = nullptr;
         return *this;
     }
@@ -193,7 +201,7 @@ class delegate<R(Args...)>
      * Create a callback to a member function to a given object.
      */
     template <class T, R (T::*memFkn)(Args... args)>
-    constexpr delegate& set(T& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T& tr)
     {
         m_cb = &doMemberCB<T, memFkn>;
         m_ptr = static_cast<void*>(&tr);
@@ -201,19 +209,19 @@ class delegate<R(Args...)>
     }
 
     template <class T, R (T::*memFkn)(Args... args) const>
-    constexpr delegate& set(T const& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr)
     {
         m_cb = &doConstMemberCB<T, memFkn>;
         m_ptr = const_cast<void*>(static_cast<const void*>(&tr));
         return *this;
     }
 
-    // Delete rvalues. Not interested in temporaries.
+    // Delete r-values. Not interested in temporaries.
     template <class T, R (T::*memFkn)(Args... args)>
-    constexpr delegate& set(T&&) = delete;
+    DELEGATE_CXX14CONSTEXPR delegate& set(T&&) = delete;
 
     template <class T, R (T::*memFkn)(Args... args) const>
-    constexpr delegate& set(T&&) = delete;
+    DELEGATE_CXX14CONSTEXPR delegate& set(T&&) = delete;
 
     /**
      * Create a callback to a Functor or a lambda.
@@ -222,7 +230,7 @@ class delegate<R(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    constexpr delegate& set(T& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T& tr)
     {
         m_cb = &doFunctor<T>;
         m_ptr = static_cast<void*>(&tr);
@@ -230,7 +238,7 @@ class delegate<R(Args...)>
     }
 
     template <class T>
-    constexpr delegate& set(T const& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr)
     {
         m_cb = &doConstFunctor<T>;
         m_ptr = const_cast<void*>(static_cast<const void*>(&tr));
@@ -248,25 +256,23 @@ class delegate<R(Args...)>
     template <R (*fkn)(Args... args)>
     static constexpr delegate make()
     {
-        delegate del;
-        return del.set<fkn>();
+        return delegate{fkn ? &doFreeCB<fkn> : &doNullFkn, nullptr};
     }
 
     /**
      * Create a callback to a member function to a given object.
      */
-    template <class T, R (T::*memFkn)(Args... args) const>
-    static constexpr delegate make(const T& object)
+    template <class T, R (T::*memFkn)(Args... args)>
+    static constexpr delegate make(T& o)
     {
-        delegate del;
-        return del.set<const T, memFkn>(object);
+        return delegate{&doMemberCB<T, memFkn>, static_cast<void*>(&o)};
     }
 
-    template <class T, R (T::*memFkn)(Args... args)>
-    static constexpr delegate make(T& object)
+    template <class T, R (T::*memFkn)(Args... args) const>
+    static constexpr delegate make(const T& o)
     {
-        delegate del;
-        return del.set<T, memFkn>(object);
+        return delegate{&doConstMemberCB<T, memFkn>,
+                        const_cast<void*>(static_cast<const void*>(&o))};
     }
 
     /**
@@ -276,12 +282,18 @@ class delegate<R(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    static constexpr delegate make(T&& object)
+    static constexpr delegate make(T& o)
     {
-        delegate del;
-        del.set(object);
-        return del;
+        return delegate{&doFunctor<T>, static_cast<void*>(&o)};
     }
+    template <class T>
+    static constexpr delegate make(T const& o)
+    {
+        return delegate{&doConstFunctor<T>,
+                        const_cast<void*>(static_cast<const void*>(&o))};
+    }
+    template <class T>
+    static constexpr delegate make(T&& object) = delete;
 
     /**
      * Create a callback to a free function with a specific type on
@@ -290,8 +302,7 @@ class delegate<R(Args...)>
     template <class Tptr, R (*fkn)(Tptr, Args... args)>
     static constexpr delegate makeFreeCBWithPtr(Tptr ptr)
     {
-        auto cb = &doFreeCBWithPtr<Tptr, fkn>;
-        return delegate(cb, static_cast<void*>(ptr));
+        return delegate(&doFreeCBWithPtr<Tptr, fkn>, static_cast<void*>(ptr));
     }
 
     /**
@@ -322,14 +333,14 @@ class delegate<R(Args...)>
 };
 
 template <typename R, typename... Args>
-bool
+constexpr bool
 operator==(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs)
 {
     return lhs.equal(rhs);
 }
 
 template <typename R, typename... Args>
-bool
+constexpr bool
 operator!=(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs)
 {
     return !(lhs == rhs);
@@ -337,28 +348,28 @@ operator!=(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs)
 
 // Bite the bullet, this is how unique_ptr handle nullptr_t.
 template <typename R, typename... Args>
-bool
+constexpr bool
 operator==(std::nullptr_t lhs, const delegate<R(Args...)>& rhs)
 {
     return rhs.null();
 }
 
 template <typename R, typename... Args>
-bool
+constexpr bool
 operator!=(std::nullptr_t lhs, const delegate<R(Args...)>& rhs)
 {
     return !(lhs == rhs);
 }
 
 template <typename R, typename... Args>
-bool
+constexpr bool
 operator==(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
 {
     return lhs.null();
 }
 
 template <typename R, typename... Args>
-bool
+constexpr bool
 operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
 {
     return !(lhs == rhs);
@@ -406,5 +417,7 @@ operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
                                                                                \
     (delegate<fknType>::make<std::remove_reference<decltype(ptr)>::type, fkn>( \
         ptr))
+
+#undef DELEGATE_14CONSTEXPR
 
 #endif /* UTILITY_CALLBACK_H_ */

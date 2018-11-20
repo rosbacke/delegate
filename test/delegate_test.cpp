@@ -6,6 +6,10 @@
 
 #include <gtest/gtest.h>
 
+#if __cplusplus < 201103L
+#error "Require at least C++11 to compile delegate"
+#endif
+
 TEST(Test_framework, test1)
 {
     EXPECT_TRUE(true);
@@ -92,17 +96,17 @@ TEST(delegate, Functor_const_variants)
     Functor f;
     delegate<void()> del;
     del.set(f);
-    f();
+    del();
     del.set<Functor>(f);
-    f();
+    del();
 
-    // Must not work. require operator() const
+    // Must not compile. require operator() const
     const Functor f2;
     (void)f2;
     // del.set(f2);
     // del.set<Functor>(f2);
 
-    // Must not work
+    // Must not compile. No storage of pointer to temporary.
     // del.set<Functor>(Functor{});
     // del.set(Functor{});
 
@@ -115,19 +119,111 @@ TEST(delegate, Functor_const_variants)
     // Ok, got operator() const
     cFunctor f3;
     del.set<cFunctor>(f3);
-    f3();
+    del();
     del.set(f3);
-    f3();
+    del();
 
     const cFunctor f4;
     del.set<cFunctor>(f4);
-    f4();
+    del();
     del.set(f4);
-    f4();
+    del();
 
-    // Must not work
+    // Must not compile. No storage of pointer to temporary.
     // del.set<Functor2>(Functor2{});
     // del.set(Functor2{});
+}
+
+TEST(delegate, Member_const_variants)
+{
+    struct MemberCheck
+    {
+        int member(int i)
+        {
+            return i + 1;
+        }
+        int cmember(int i) const
+        {
+            return i + 2;
+        }
+    };
+
+    MemberCheck mc;
+    const MemberCheck cmc;
+
+    delegate<int(int)> del;
+    del.set<MemberCheck, &MemberCheck::member>(mc);
+    int res = del(1);
+    EXPECT_EQ(res, 2);
+
+    // Must not compile. Need const member for const object.
+    // del.set<MemberCheck, &MemberCheck::member>(cmc);
+
+    del.set<MemberCheck, &MemberCheck::cmember>(mc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    del.set<MemberCheck, &MemberCheck::cmember>(cmc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    // Must not compile. Do not allow storing pointer to temporary.
+    // del.set<MemberCheck, &MemberCheck::member>(MemberCheck{});
+    // del.set<MemberCheck, &MemberCheck::cmember>(MemberCheck{});
+}
+
+void
+testFkn()
+{
+}
+
+#if __cplusplus >= 201402L
+#define CXX_14CONSTEXPR constexpr
+#else
+#define CXX_14CONSTEXPR
+#endif
+
+struct TestMember
+{
+    void member() {}
+    void cmember() const {}
+};
+static TestMember tm;
+static const TestMember ctm;
+
+struct Functor
+{
+    void operator()(){};
+};
+
+static Functor s_f;
+
+struct CFunctor
+{
+    void operator()() const {};
+};
+
+static const CFunctor s_cf;
+
+TEST(delegate, test_constexpr)
+{
+    auto constexpr del = delegate<void()>{};
+
+    auto CXX_14CONSTEXPR del2 = delegate<void()>{}.set<testFkn>();
+    auto CXX_14CONSTEXPR del4 =
+        delegate<void()>{}.set<TestMember, &TestMember::member>(tm);
+    auto CXX_14CONSTEXPR del6 =
+        delegate<void()>{}.set<TestMember, &TestMember::cmember>(ctm);
+    auto CXX_14CONSTEXPR del8 = delegate<void()>{}.set(s_f);
+    auto CXX_14CONSTEXPR del10 = delegate<void()>{}.set(s_cf);
+
+    auto constexpr del3 = delegate<void()>::make<testFkn>();
+    auto constexpr del5 =
+        delegate<void()>::make<TestMember, &TestMember::member>(tm);
+    auto constexpr del7 =
+        delegate<void()>::make<TestMember, &TestMember::cmember>(ctm);
+    auto constexpr del9 = delegate<void()>::make(s_f);
+    auto constexpr del11 = delegate<void()>::make(s_cf);
 }
 
 void
