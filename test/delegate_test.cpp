@@ -334,9 +334,9 @@ struct TestObj
 };
 
 int
-adder(TestObj* o, int val)
+adder(TestObj& o, int val)
 {
-    return o->m_val + val;
+    return o.m_val + val;
 }
 
 void
@@ -345,7 +345,7 @@ testFreeFunctionWithPtr()
     TestObj o;
 
     // Create simple callback to a normal free function.
-    auto cb = delegate<int(int)>::makeFreeCBWithPtr<TestObj*, adder>(&o);
+    auto cb = delegate<int(int)>::make<TestObj, adder>(o);
 
     o.m_val = 6;
     int res = cb(3);

@@ -12,7 +12,7 @@
 #include <utility>
 
 /**
- * Simple storage of a callable object for free and member functions.
+ * Simple storage of a callable object for functors, free and member functions.
  *
  * Design intent is to do part of what std::function do but
  * without heap allocation, virtual function call and with minimal
@@ -20,32 +20,47 @@
  * Use case is embedded systems where previously raw function pointers
  * where used, using a void* pointer to point out a particular structure/object.
  *
- * The price is less generality (No functors) and a bit of type fiddling
- * with void pointers.
+ * The price is less generality. The user must keep objects alive since the
+ * delegate only store a pointer to them. This is true for both
+ * member functions and functors.
  *
- * Helper functions are provided to handle the following cases:
- * - Call a member function on a specific object.
- * - Call a free function of signature  R(*)(T*, Args...); (T is some arbitrary
- * type).
- * - Call a free function of signature void(*)(void*, Args...); (function can be
- * a function pointer)
+ * Free functions and member functions are supplied as compile time template
+ * arguments. It is required to generate the correct intermediate functions.
  *
- * In the code storing the callback, construct an object of type 'delegate'.
- * This is a nullable type which can be copied freely, containing 2 pointers.
+ * Once constructed, the delegate should behave as any pointer:
+ * - Can be copied freely.
+ * - Can be compared to same type delegates and nullptr.
+ * - Can be reassigned.
+ * - Can be called.
  *
- * User code assigns this object using 'assign' member functions.
+ * A default constructed delegate compare equal to nullptr. However it can be
+ * called with the default behavior being to do nothing and return a default
+ * constructed return object.
  *
- * Call the delegate by regular operator(). E.g.
- * delegate cb = ...; // Set up some callback target.
- * ...
- * int val = 0;
- * cb(val);
- * For free functions, the supplied void pointer get the value from the call
- * setup.
+ * Two overload sets are provided for construction:
+ * - set : Set an existing delegate with new pointer values.
+ * - make : Construct a new delegate.
  *
- * The null value for the delegate is a special nullFkn. Calling a delegate
- * with a null value is a no-op and the possibly returned value is
- * a default constructed object of the relevant type.
+ * The following types of callables are supported:
+ * - Functors.
+ * - Member functions.
+ * - Free functions. (Do not use the stored void* value)
+ * - (Special) A free function with a void* extra first argument. That will
+ *   be passed the void* value set at delegate construction,
+ *   in addition to the arguments supplied to the call.
+ *
+ * Const correctness:
+ * The delegate models a pointer in const correctness. The constness of the
+ * delegate is different that the constness of the called objects.
+ * Calling a member function or operator() require them to be const to be able
+ * to call a const object.
+ *
+ * Currently, both the member function and the object to call on must be set
+ * at the same time. This is required to maintain const correctness guarantees.
+ * (The constness of the object is not part of the delegate type.)
+ *
+ * The delegate do not allow storing pointers to r-value references
+ * (temporary objects) for member and functor construction.
  */
 
 #if __cplusplus < 201103L
@@ -119,12 +134,21 @@ class delegate<R(Args...)>
     }
 
     // Adapter function for the free function with extra first arg
-    // in the called function, set at callback construction.
-    template <class Tptr, R(freeFknWithPtr)(Tptr, Args...)>
-    inline static R doFreeCBWithPtr(void* o, Args... args)
+    // in the called function, set at delegate construction.
+    template <class T, R(freeFkn)(T&, Args...)>
+    inline static R dofreeFknWithObjectRef(void* o, Args... args)
     {
-        Tptr obj = static_cast<Tptr>(o);
-        return freeFknWithPtr(obj, args...);
+        T* obj = static_cast<T*>(o);
+        return freeFkn(*obj, args...);
+    }
+
+    // Adapter function for the free function with extra first arg
+    // in the called function, set at delegate construction.
+    template <class T, R(freeFkn)(T const&, Args...)>
+    inline static R dofreeFknWithObjectConstRef(void* o, Args... args)
+    {
+        T const* obj = static_cast<T*>(o);
+        return freeFkn(*obj, args...);
     }
 
     // Adapter function for when the stored object is a pointer to a
@@ -163,14 +187,23 @@ class delegate<R(Args...)>
         return m_cb(m_ptr, args...);
     }
 
+    constexpr bool null() const noexcept
+    {
+        return m_cb == doNullFkn;
+    }
+
     constexpr bool equal(const delegate& rhs) const noexcept
     {
         return m_cb == rhs.m_cb && m_ptr == rhs.m_ptr;
     }
 
-    constexpr bool null() const noexcept
+    // Define a total order for purpose of sorting in maps etc.
+    // Do not define operators since this is not a natural total order.
+    // It will vary randomly depending on where symbols end up etc.
+    constexpr bool less(const delegate& rhs) const noexcept
     {
-        return m_cb == doNullFkn;
+        return (null() && !rhs.null()) || m_cb < rhs.m_cb ||
+               (m_cb == rhs.m_cb && m_ptr < rhs.m_ptr);
     }
 
     // Return true if a function pointer is stored.
@@ -296,18 +329,33 @@ class delegate<R(Args...)>
     static constexpr delegate make(T&& object) = delete;
 
     /**
-     * Create a callback to a free function with a specific type on
-     * the pointer.
+     * Create a delegate to a free function, where the first argument is
+     * assumed to be a reference to the object supplied as argument here.
+     * The return value and rest of the argument must match the signature
+     * of the delegate.
      */
-    template <class Tptr, R (*fkn)(Tptr, Args... args)>
-    static constexpr delegate makeFreeCBWithPtr(Tptr ptr)
+    template <typename T, R (*fkn)(T&, Args...)>
+    static constexpr delegate make(T& o)
     {
-        return delegate(&doFreeCBWithPtr<Tptr, fkn>, static_cast<void*>(ptr));
+        return delegate{&dofreeFknWithObjectRef<T, fkn>,
+                        static_cast<void*>(&o)};
     }
 
+    template <typename T, R (*fkn)(T const&, Args...)>
+    static constexpr delegate make(T& o)
+    {
+        return delegate{&dofreeFknWithObjectConstRef<T, fkn>,
+                        const_cast<void*>(static_cast<void const*>(&o))};
+    }
+
+    template <typename T, R (*fkn)(T&, Args...)>
+    static constexpr delegate make(T&&) = delete;
+    template <typename T, R (*fkn)(T const&, Args...)>
+    static constexpr delegate make(T&&) = delete;
+
     /**
-     * Create a callback to a free function with a void* pointer argument,
-     * removing the need for an adapter function.
+     * Create a callback to a free function with a signature R(void*, Args...)
+     * When calling, add the stored void* pointer as first argument.
      */
     template <Trampoline fkn>
     static constexpr delegate makeVoidCB(void* ptr = nullptr)
@@ -316,8 +364,9 @@ class delegate<R(Args...)>
     }
 
     /**
-     * Create a callback using a run-time variable fkn pointer
-     * using voids. No adapter function is used.
+     * Create a callback to a free function with a signature R(void*, Args...)
+     * When calling, add the stored void* pointer as first argument.
+     * Accept pointer as runtime argument.
      */
     static constexpr delegate makeVoidCB(Trampoline fkn, void* ptr = nullptr)
     {
@@ -375,48 +424,26 @@ operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
     return !(lhs == rhs);
 }
 
-// No ordering operators ( operator< etc). This delegate represent several
-// classes of pointers and is not a naturally ordered type.
+// No ordering operators ( operator< etc) defined. This delegate
+// represent several classes of pointers and is not a naturally
+// ordered type.
 
 /**
  * Helper macro to create a delegate for calling a member function.
  * Example of use:
  *
- * auto cb = MAKE_MEMBER_DEL(void(), SomeClass::memberFunction, obj);
+ * auto cb = DELEGATE_MKMEM(void(), &SomeClass::memberFunction, obj);
  *
  * where 'obj' is of type 'SomeClass'.
  *
- * @param fknType Template parameter for the function signature in std::function
- * style.
- * @param memFknPtr address of member function pointer. C++ require full name
- * path.
+ * @param signature Template parameter for the delegate.
+ * @param memFknPtr address of member function pointer. C++ require
+ *                  full name path with addressof operator (&)
  * @object object which the member function should be called on.
  */
-#define MAKE_MEMBER_DEL(fknType, memFknPtr, object)                         \
-                                                                            \
-    (delegate<fknType>::make<std::remove_reference<decltype(object)>::type, \
-                             memFkn>(object))
-
-/**
- * Helper macro to create a delegate for calling a free function
- * or static class function.
- * Example of use:
- *
- * auto cb = MAKE_FREE_DEL(void(), fkn, ptr);
- *
- * where 'ptr' is a pointer to some type T and fkn a free
- * function.
- *
- * @param fknType Template parameter for the function signature in std::function
- * style.
- * @param fkn Free function to be called. signature: R (*)(T*, Args...);
- * @object Pointer to be supplied as first argument to function.
- *
- */
-#define MAKE_FREE_DEL(fknType, fkn, ptr)                                       \
-                                                                               \
-    (delegate<fknType>::make<std::remove_reference<decltype(ptr)>::type, fkn>( \
-        ptr))
+#define DELEGATE_MKMEM(signature, memFknPtr, object)                      \
+    (delegate<signature>::make<std::remove_reference_t<decltype(object)>, \
+                               memFkn>(object))
 
 #undef DELEGATE_14CONSTEXPR
 
