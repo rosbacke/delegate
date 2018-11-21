@@ -16,6 +16,30 @@ freeFkn(int x)
     return x + 5;
 }
 
+static int s_obj = 0;
+void testFkn12()
+{ s_obj = 1;}
+
+void testFkn12(int)
+{ s_obj = 2; }
+
+
+
+// Ensure the language uses the signature in the delegate type to disambiguate
+// function names.
+TEST(delegate, languageAllowPtrOverloadSet)
+{
+	delegate<void()> cb;
+	cb.set<testFkn12>();
+	cb();
+	EXPECT_EQ(s_obj, 1);
+
+	delegate<void(int)> cb2;
+	cb2.set<testFkn12>();
+	cb2(1);
+	EXPECT_EQ(s_obj, 2);
+}
+
 TEST(delegate, Free_static_function_set_make)
 {
     auto del = delegate<int(int)>::make<freeFkn>();
