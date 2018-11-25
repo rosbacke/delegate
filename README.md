@@ -37,4 +37,3 @@ Example use case:
         cb(456);
     }
 
-
