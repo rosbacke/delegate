@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# Emacs.
+*~
+.cproject
+.project
+.settings

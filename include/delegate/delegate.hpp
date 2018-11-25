@@ -5,11 +5,11 @@
  *      Author: Mikael Rosbacke
  */
 
-#ifndef UTILITY_DELEGATE_H_
-#define UTILITY_DELEGATE_H_
+#ifndef DELEGATE_DELEGATE_HPP_
+#define DELEGATE_DELEGATE_HPP_
 
-// #include <string.h>
 #include <utility>
+#include <memory>
 
 /**
  * Simple storage of a callable object for free and member functions.
@@ -64,6 +64,28 @@ nullReturnFunction()
 {
     return;
 }
+
+// Helper struct to make sure no temporary values are passed.
+// Accept res and const ref but not r-value references.
+template<typename T>
+struct NonTemporaryRef;
+
+template<typename T>
+struct NonTemporaryRef<const T>
+{
+	NonTemporaryRef(const T& ref) : obj_p(&ref) {}
+	const T* obj_p;
+};
+
+template<typename T>
+struct NonTemporaryRef
+{
+	NonTemporaryRef(T& ref) : obj_p(&ref) {}
+	NonTemporaryRef(T&& ref) = delete;
+
+	T* obj_p;
+};
+
 }
 
 /**
@@ -99,6 +121,14 @@ class delegate<R(Args...)>
         return (((*obj).*(memFkn))(args...));
     }
 
+    // Adapter function for the member + object calling.
+    template <class T, R (T::*memFkn)(Args...) const>
+    inline static R doConstMemberCB(void* o, Args... args)
+    {
+        T const* obj = static_cast<T*>(o);
+        return (((*obj).*(memFkn))(args...));
+    }
+
     // Adapter function for the free function with extra first arg
     // in the called function, set at callback construction.
     template <class Tptr, R(freeFknWithPtr)(Tptr, Args...)>
@@ -117,6 +147,13 @@ class delegate<R(Args...)>
         return (*obj)(args...);
     }
 
+    template <class Functor>
+    inline static R doConstFunctor(void* o_arg, Args... args)
+    {
+        const Functor* obj = static_cast<Functor*>(o_arg);
+        return (*obj)(args...);
+    }
+
     // Type of the function pointer for the trampoline functions.
     using Trampoline = R (*)(void*, Args...);
 
@@ -128,11 +165,11 @@ class delegate<R(Args...)>
     constexpr delegate(const std::nullptr_t& nptr = nullptr)
         : m_cb(&doNullFkn), m_ptr(nullptr){};
 
-    ~delegate(){};
+    ~delegate() = default;
 
     // Call the stored function. Requires: bool(*this) == true;
     // Will call trampoline fkn which will call the final fkn.
-    constexpr R operator()(Args... args) __attribute__((always_inline))
+    constexpr R operator()(Args... args) const __attribute__((always_inline))
     {
         return m_cb(m_ptr, args...);
     }
@@ -178,10 +215,18 @@ class delegate<R(Args...)>
      * Create a callback to a member function to a given object.
      */
     template <class T, R (T::*memFkn)(Args... args)>
-    constexpr delegate& set(T& object)
+    constexpr delegate& set(details::NonTemporaryRef<T> tr)
     {
         m_cb = &doMemberCB<T, memFkn>;
-        m_ptr = static_cast<void*>(&object);
+        m_ptr = static_cast<void*>(tr.obj_p);
+        return *this;
+    }
+
+    template <class T, R (T::*memFkn)(Args... args) const>
+    constexpr delegate& set(details::NonTemporaryRef<const T> tr)
+    {
+        m_cb = &doConstMemberCB<T, memFkn>;
+        m_ptr = const_cast<void*>(static_cast<const void*>(tr.obj_p));
         return *this;
     }
 
@@ -192,10 +237,18 @@ class delegate<R(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    constexpr delegate& set(T& object)
+    constexpr delegate& set(details::NonTemporaryRef<T> tr)
     {
         m_cb = &doFunctor<T>;
-        m_ptr = static_cast<void*>(&object);
+        m_ptr = static_cast<void*>(tr.obj_p);
+        return *this;
+    }
+
+    template <class T>
+    constexpr delegate& set(details::NonTemporaryRef<const T> tr)
+    {
+        m_cb = &doConstFunctor<T>;
+        m_ptr = const_cast<void*>(static_cast<const void*>(tr.obj_p));
         return *this;
     }
 
@@ -206,19 +259,25 @@ class delegate<R(Args...)>
     template <R (*fkn)(Args... args)>
     static constexpr delegate make()
     {
-        auto cb = &doFreeCB<fkn>;
-        return delegate(cb, nullptr);
+    	delegate del;
+    	return del.set<fkn>();
     }
 
     /**
      * Create a callback to a member function to a given object.
      */
+    template <class T, R (T::*memFkn)(Args... args) const>
+    static constexpr delegate make(const T& object)
+    {
+    	delegate del;
+    	return del.set<const T, memFkn>(object);
+    }
+
     template <class T, R (T::*memFkn)(Args... args)>
     static constexpr delegate make(T& object)
     {
-        auto cb = &doMemberCB<T, memFkn>;
-        T* obj = &object;
-        return delegate(cb, static_cast<void*>(obj));
+    	delegate del;
+    	return del.set<T, memFkn>(object);
     }
 
     /**
@@ -228,12 +287,13 @@ class delegate<R(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    static constexpr delegate make(T& object)
+    static constexpr delegate make(T&& object)
     {
-        auto cb = &doFunctor<T>;
-        T* obj = &object;
-        return delegate(cb, static_cast<void*>(obj));
+    	delegate del;
+    	using T_ = std::remove_reference_t<T>;
+        return del.set<T_>(details::NonTemporaryRef<T_>(object));
     }
+
 
     /**
      * Create a callback to a free function with a specific type on
@@ -247,7 +307,7 @@ class delegate<R(Args...)>
     }
 
     /**
-     * Create a callback to a free function with a void pointer,
+     * Create a callback to a free function with a void* pointer argument,
      * removing the need for an adapter function.
      */
     template <Trampoline fkn>
@@ -316,8 +376,8 @@ operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
     return !(lhs == rhs);
 }
 
-// No ordering operators ( operator< etc). This delgate represent several
-// classes of pointers and is not a natually ordered type.
+// No ordering operators ( operator< etc). This delegate represent several
+// classes of pointers and is not a naturally ordered type.
 
 /**
  * Helper macro to create a delegate for calling a member function.

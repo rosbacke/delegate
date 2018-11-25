@@ -49,11 +49,13 @@ test_nullable()
 
     delegate<std::uint16_t(uint32_t)> cb2;
     assert(!cb2);
-    auto t =
-        cb2(4); // delegate supports calls to a null delegate. will do nothing.
 
-    using ArgT = decltype(t);
+    // delegate supports calls to a null delegate. will do nothing.
+    // and return a default constructed value.
+    auto t = cb2(4);
+
     // try to deduce that we got a proper uint16_t type back.
+    using ArgT = decltype(t);
     assert(std::numeric_limits<ArgT>::min() == 0);
     assert(std::numeric_limits<ArgT>::max() == 0xffff);
     assert(std::numeric_limits<ArgT>::is_signed == false);
@@ -101,9 +103,17 @@ testFreeFunction()
 
 struct TestObj
 {
+	TestObj() = default;
+	TestObj(int x) : m_val(x) {}
+
     int m_val = 3;
 
     int add(int x)
+    {
+        return m_val + x;
+    }
+
+    int addc(int x) const
     {
         return m_val + x;
     }
@@ -161,6 +171,59 @@ testMemberFunction()
     assert(res == 12);
 }
 
+TEST(delegate, testMemberFunctionConst)
+{
+	const TestObj o(6);
+
+    // Create member function callback.
+    auto cb = delegate<int(int)>::make<TestObj, &TestObj::addc>(o);
+
+    int res = cb(3);
+    assert(res == 9);
+
+    res = cb(9);
+    assert(res == 15);
+
+    // Try member construction.
+    delegate<int(int)> cb2;
+    cb2.set<TestObj, &TestObj::addc>(o);
+
+    res = cb2(3);
+    assert(res == 9);
+
+    res = cb2(9);
+    assert(res == 15);
+
+    // Try const member functions on non const obj.
+}
+
+TEST(delegate, testMemberFunctionConst2)
+{
+	TestObj o(6);
+
+    // Create member function callback.
+    auto cb = delegate<int(int)>::make<TestObj, &TestObj::addc>(o);
+
+    int res = cb(3);
+    assert(res == 9);
+
+    res = cb(9);
+    assert(res == 15);
+
+    // Try member construction.
+    delegate<int(int)> cb2;
+    cb2.set<TestObj, &TestObj::addc>(o);
+
+    res = cb2(3);
+    assert(res == 9);
+
+    res = cb2(9);
+    assert(res == 15);
+
+    // Try const member functions on non const obj.
+}
+
+
 void
 testLambdaFunction()
 {
@@ -173,6 +236,44 @@ testLambdaFunction()
     };
 
     Functor fkn;
+
+    // Create simple callback object with operator().
+    auto cb = delegate<int(int, int)>::make(fkn);
+
+    // Can I copy?
+    auto cb2 = cb;
+
+    auto res = cb2(5, 3);
+    assert(res == 8);
+
+    auto t = [](int x, int y) -> int { return x + y; };
+
+    auto cb3 = delegate<int(int, int)>::make(t);
+
+    res = cb3(6, 5);
+    assert(res == 11);
+
+    auto lambda = [](int x, int y) -> int { return x + y; };
+    auto cb4 = delegate<int(int, int)>::make(lambda);
+
+    res = cb4(6, 5);
+    assert(res == 11);
+}
+
+
+TEST(delegate, testLambdaConstFunctionConst2)
+{
+    struct FunctorC
+    {
+        int operator()(int x, int y) const
+        {
+            return x + y;
+        }
+    };
+
+    const FunctorC fkn;
+
+    const FunctorC fkn2 = fkn;
 
     // Create simple callback object with operator().
     auto cb = delegate<int(int, int)>::make(fkn);
