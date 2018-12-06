@@ -172,6 +172,77 @@ TEST(delegate, Member_const_variants)
     // del.set<MemberCheck, &MemberCheck::cmember>(MemberCheck{});
 }
 
+// MAke sure we can store member function pointer with correct const
+// correctness.
+TEST(delegate, Member_intermediate_storage)
+{
+    struct MemberCheck
+    {
+        int member(int i)
+        {
+            return i + 1;
+        }
+        int cmember(int i) const
+        {
+            return i + 2;
+        }
+    };
+
+    MemberCheck mc;
+    const MemberCheck cmc;
+
+    delegate<int(int)> del;
+    MemFkn<decltype(del), false> memberFkn{
+        delegate<int(int)>::memFkn<MemberCheck, &MemberCheck::member>()};
+
+    del.set(memberFkn, mc);
+    int res = del(1);
+    EXPECT_EQ(res, 2);
+
+    del = delegate<int(int)>::make(memberFkn, mc);
+    res = del(1);
+    EXPECT_EQ(res, 2);
+
+    // Must not compile. Non const member fkn, const obj.
+    // del.set(memberFkn, cmc);
+    // del.set(memberFkn, MemberCheck{});
+    // del = delegate<int(int)>::make(memberFkn, cmc);
+    // del = delegate<int(int)>::make(memberFkn, MemberCheck{});
+
+    MemFkn<decltype(del), true> cmemberFkn{
+        delegate<int(int)>::memFkn<MemberCheck, &MemberCheck::cmember>()};
+    del.set(cmemberFkn, mc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    del = delegate<int(int)>::make(cmemberFkn, mc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    del.set(cmemberFkn, cmc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    del = delegate<int(int)>::make(cmemberFkn, cmc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    // Must not compile. Const member fkn,
+    // del.set(cmemberFkn, MemberCheck{});
+    // del = delegate<int(int)>::make(cmemberFkn, MemberCheck{});
+
+    // Make sure convenience notation works.
+    auto memberFkn3 = del.memFkn<MemberCheck, &MemberCheck::member>();
+    del.set(memberFkn3, mc);
+    res = del(1);
+    EXPECT_EQ(res, 2);
+
+    auto memberFkn4 = del.memFkn<MemberCheck, &MemberCheck::cmember>();
+    del.set(memberFkn4, cmc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+}
+
 void
 testFkn()
 {
@@ -216,6 +287,12 @@ TEST(delegate, test_constexpr)
         delegate<void()>{}.set<TestMember, &TestMember::cmember>(ctm);
     auto CXX_14CONSTEXPR del8 = delegate<void()>{}.set(s_f);
     auto CXX_14CONSTEXPR del10 = delegate<void()>{}.set(s_cf);
+    auto constexpr memFkn =
+        delegate<void()>{}.memFkn<TestMember, &TestMember::member>();
+    auto constexpr memFkn2 =
+        delegate<void()>{}.memFkn<TestMember, &TestMember::cmember>();
+    auto CXX_14CONSTEXPR del12 = delegate<void()>{}.set(memFkn, s_f);
+    auto CXX_14CONSTEXPR del14 = delegate<void()>{}.set(memFkn2, s_cf);
 
     auto constexpr del3 = delegate<void()>::make<testFkn>();
     auto constexpr del5 =
@@ -224,6 +301,47 @@ TEST(delegate, test_constexpr)
         delegate<void()>::make<TestMember, &TestMember::cmember>(ctm);
     auto constexpr del9 = delegate<void()>::make(s_f);
     auto constexpr del11 = delegate<void()>::make(s_cf);
+    auto constexpr del13 = delegate<void()>::make(memFkn, s_f);
+    auto constexpr del15 = delegate<void()>::make(memFkn2, s_cf);
+}
+
+struct Base
+{
+    virtual int memb(int i)
+    {
+        return i + 1;
+    }
+    virtual int cmemb(int i) const
+    {
+        return i + 2;
+    }
+};
+
+struct Derived : public Base
+{
+    virtual int memb(int i)
+    {
+        return i + 3;
+    }
+    virtual int cmemb(int i) const
+    {
+        return i + 4;
+    }
+};
+
+TEST(delegate, test_virtual_dispatch)
+{
+    Derived d;
+    Base& b = d;
+
+    delegate<int(int)> del;
+    del.set<Base, &Base::memb>(b);
+    EXPECT_EQ(del(1), 4);
+
+    const Base& cb = d;
+    del.set<Base, &Base::cmemb>(cb);
+    // derived called.
+    EXPECT_EQ(del(1), 5);
 }
 
 void

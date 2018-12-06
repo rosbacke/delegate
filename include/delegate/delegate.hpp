@@ -55,9 +55,15 @@
  * Calling a member function or operator() require them to be const to be able
  * to call a const object.
  *
- * Currently, both the member function and the object to call on must be set
+ * Both the member function and the object to call on must be set
  * at the same time. This is required to maintain const correctness guarantees.
- * (The constness of the object is not part of the delegate type.)
+ * The constness of the object or the member function is not part of the
+ * delegate type.
+ *
+ * There is a class MemFkn for storing pointers to member functions which
+ * will keep track of constness. It allow taking the address of a member
+ * function at one point and store it. At a later time the MemFkn object and an
+ * object can be set to a delegate for later call.
  *
  * The delegate do not allow storing pointers to r-value references
  * (temporary objects) for member and functor construction.
@@ -92,6 +98,42 @@ nullReturnFunction()
 template <typename T>
 class delegate;
 
+template <typename Del, bool cnst>
+class MemFkn
+{
+  public:
+    explicit constexpr MemFkn() = default;
+    explicit constexpr MemFkn(typename Del::Trampoline f) : trampoline(f) {}
+
+    constexpr bool null() const noexcept
+    {
+        return trampoline == Del::doNullFkn;
+    }
+
+    constexpr bool equal(const MemFkn& rhs) const noexcept
+    {
+        return trampoline == rhs.trampoline;
+    }
+
+    // Define a total order for purpose of sorting in maps etc.
+    // Do not define operators since this is not a natural total order.
+    // It will vary randomly depending on where symbols end up etc.
+    constexpr bool less(const MemFkn& rhs) const noexcept
+    {
+        return (null() && !rhs.null()) || trampoline < rhs.trampoline;
+    }
+
+    // Return true if a function pointer is stored.
+    constexpr operator bool() const noexcept
+    {
+        return !null();
+    }
+
+  private:
+    friend Del;
+    typename Del::Trampoline trampoline = Del::doNullFkn;
+};
+
 /**
  * Class for storing the callable object
  * Stores a pointer to an adapter function and a void* pointer to the
@@ -100,9 +142,13 @@ class delegate;
  * @param R type of the return value from calling the callback.
  * @param Args Argument list to the function when calling the callback.
  */
-template <typename R, typename... Args>
-class delegate<R(Args...)>
+template <typename R_, typename... Args>
+class delegate<R_(Args...)>
 {
+    using R = R_;
+    friend class MemFkn<delegate, false>;
+    friend class MemFkn<delegate, true>;
+
     // Adaptor function for when the delegate is expected to be a nullptr.
     inline static R doNullFkn(void* v, Args... args)
     {
@@ -372,6 +418,79 @@ class delegate<R(Args...)>
     {
         return delegate(fkn, ptr);
     }
+
+    /**
+     * Create a MemFkn object for storing member function before connecting
+     * them with an object to make them callable.
+     * Keeps track of constness of the member function and have richer type
+     * information compared to the delegate.
+     */
+    template <class T, R (T::*memFkn_)(Args... args) const>
+    static constexpr MemFkn<delegate, true> memFkn()
+    {
+        return MemFkn<delegate, true>{&doConstMemberCB<T, memFkn_>};
+    }
+
+    template <class T, R (T::*memFkn_)(Args... args)>
+    static constexpr MemFkn<delegate, false> memFkn()
+    {
+        return MemFkn<delegate, false>{&doMemberCB<T, memFkn_>};
+    }
+
+    /**
+     * Combine a MemFkn with an object to set this delegate.
+     */
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, false> f, T& o)
+    {
+        m_cb = f.trampoline;
+        m_ptr = static_cast<void*>(&o);
+        return *this;
+    }
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f, T const& o)
+    {
+        m_cb = f.trampoline;
+        m_ptr = const_cast<void*>(static_cast<const void*>(&o));
+        return *this;
+    }
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f, T& o)
+    {
+        return set(f, static_cast<T const&>(o));
+    }
+
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f,
+                                          T&& o) = delete;
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, false> f,
+                                          T&& o) = delete;
+
+    template <class T>
+    static constexpr delegate make(MemFkn<delegate, false> f, T& o)
+    {
+        return delegate{f.trampoline, static_cast<void*>(&o)};
+    }
+    template <class T>
+    static constexpr delegate make(MemFkn<delegate, false>, T const&) = delete;
+
+    template <class T>
+    static constexpr delegate make(MemFkn<delegate, true> f, T const& o)
+    {
+        return delegate{f.trampoline,
+                        const_cast<void*>(static_cast<const void*>(&o))};
+    }
+    template <class T>
+    static constexpr delegate make(MemFkn<delegate, true> f, T& o)
+    {
+        return delegate{f.trampoline, static_cast<void*>(&o)};
+    }
+
+    template <class T>
+    static constexpr delegate make(MemFkn<delegate, false>, T&&) = delete;
+    template <class T>
+    static constexpr delegate make(MemFkn<delegate, true>, T&&) = delete;
 
   private:
     // Create ordinary free function pointer callback.
