@@ -8,8 +8,7 @@
 #ifndef DELEGATE_DELEGATE_HPP_
 #define DELEGATE_DELEGATE_HPP_
 
-#include <memory>
-#include <utility>
+#include <cstddef> // nullptr_t
 
 /**
  * Simple storage of a callable object for functors, free and member functions.
@@ -491,6 +490,80 @@ class delegate<R_(Args...)>
     static constexpr delegate make(MemFkn<delegate, false>, T&&) = delete;
     template <class T>
     static constexpr delegate make(MemFkn<delegate, true>, T&&) = delete;
+
+    // Helper struct to deduce member function types and const.
+    template <typename T, T>
+    struct DeduceMemberType;
+
+    template <typename T, R (T::*mf)(Args...)>
+    struct DeduceMemberType<R (T::*)(Args...), mf>
+    {
+        using ObjType = T;
+        static constexpr Trampoline trampoline = &doMemberCB<ObjType, mf>;
+        static constexpr void* castPtr(ObjType* obj)
+        {
+            return static_cast<void*>(obj);
+        }
+    };
+    template <typename T, R (T::*mf)(Args...) const>
+    struct DeduceMemberType<R (T::*)(Args...) const, mf>
+    {
+        using ObjType = T;
+        static constexpr Trampoline trampoline = &doConstMemberCB<ObjType, mf>;
+        static constexpr void* castPtr(ObjType const* obj)
+        {
+            return const_cast<void*>(static_cast<const void*>(obj));
+        };
+    };
+
+    // C++17 allow template<auto> for non type template arguments.
+    // Use to avoid specifying object type.
+#if __cplusplus >= 201703
+
+    template <auto mFkn>
+    constexpr delegate&
+    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj)
+    {
+        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        m_cb = DM::trampoline;
+        m_ptr = DM::castPtr(&obj);
+        return *this;
+    }
+    template <auto mFkn>
+    constexpr delegate&
+    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const& obj)
+    {
+        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        m_cb = DM::trampoline;
+        m_ptr = DM::castPtr(&obj);
+        return *this;
+    }
+    template <auto mFkn>
+    constexpr delegate&
+    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&& obj) =
+        delete;
+
+    template <auto mFkn>
+    static constexpr delegate
+    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj)
+    {
+        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        return delegate{DM::trampoline, DM::castPtr(&obj)};
+    }
+    template <auto mFkn>
+    static constexpr delegate
+    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const& obj)
+    {
+        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        return delegate{DM::trampoline, DM::castPtr(&obj)};
+    }
+
+    // Temoraries not allowed.
+    template <auto mFkn>
+    static constexpr delegate
+    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&&) = delete;
+
+#endif
 
   private:
     // Create ordinary free function pointer callback.

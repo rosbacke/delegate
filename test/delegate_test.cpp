@@ -12,7 +12,7 @@
 
 TEST(Test_framework, test1)
 {
-    EXPECT_TRUE(true);
+    // EXPECT_TRUE(false);
 }
 
 struct TestReturn
@@ -303,6 +303,17 @@ TEST(delegate, test_constexpr)
     auto constexpr del11 = delegate<void()>::make(s_cf);
     auto constexpr del13 = delegate<void()>::make(memFkn, s_f);
     auto constexpr del15 = delegate<void()>::make(memFkn2, s_cf);
+
+#if __cplusplus >= 201703
+    auto CXX_14CONSTEXPR del16 =
+        delegate<void()>{}.set<&TestMember::member>(tm);
+    auto CXX_14CONSTEXPR del18 =
+        delegate<void()>{}.set<&TestMember::cmember>(ctm);
+
+    auto constexpr del17 = delegate<void()>::make<&TestMember::member>(tm);
+    auto constexpr del19 = delegate<void()>::make<&TestMember::cmember>(ctm);
+
+#endif
 }
 
 struct Base
@@ -624,6 +635,68 @@ TEST(delegate, testLambdaConstFunctionConst2)
     res = cb2(6, 5);
     assert(res == 11);
 }
+
+#if __cplusplus >= 201703
+struct MyTest
+{
+    int fkn(int x)
+    {
+        return x + 1;
+    }
+
+    int cfkn(int x) const
+    {
+        return x + 2;
+    }
+};
+
+TEST(memberFkn, oneArgumentMemberFkn)
+{
+
+    delegate<int(int)> del;
+
+    MyTest t;
+    const MyTest ct;
+
+    del = del.make<&MyTest::fkn>(t);
+    int res = del(6);
+    EXPECT_EQ(res, 7);
+
+    // Must not compile.
+    // del = del.make<&MyTest::fkn>(ct);
+    // del = del.make<&MyTest::fkn>(MyTest{});
+
+    del = del.make<&MyTest::cfkn>(t);
+    res = del(6);
+    EXPECT_EQ(res, 8);
+
+    del = del.make<&MyTest::cfkn>(ct);
+    res = del(6);
+    EXPECT_EQ(res, 8);
+
+    // del = del.make<&MyTest::cfkn>(MyTest{});
+
+    del.set<&MyTest::fkn>(t);
+    res = del(6);
+    EXPECT_EQ(res, 7);
+
+    // Must not compile.
+    // del.set<&MyTest::fkn>(ct);
+    // del.set<&MyTest::fkn>(MyTest{});
+
+    del.set<&MyTest::cfkn>(t);
+    res = del(6);
+    EXPECT_EQ(res, 8);
+
+    del.set<&MyTest::cfkn>(ct);
+    res = del(6);
+    EXPECT_EQ(res, 8);
+
+    // Must not compile.
+    // del.set<&MyTest::cfkn>(MyTest{});
+}
+
+#endif
 
 TEST(oldtests, testrun)
 {
