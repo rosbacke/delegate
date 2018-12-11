@@ -51,7 +51,7 @@ Example use case:
 ## Design goals driving the design.
 
   * Should behave close to a normal function pointer.
-    Small, effiecent, no heap allocation, no exceptions.
+    Small, efficient, no heap allocation, no exceptions.
     Does not keep track of refered object lifetime.
     
   * Implement type erasure. The delegate need to only contain
