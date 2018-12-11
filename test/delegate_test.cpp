@@ -313,6 +313,9 @@ TEST(delegate, test_constexpr)
     auto constexpr del17 = delegate<void()>::make<&TestMember::member>(tm);
     auto constexpr del19 = delegate<void()>::make<&TestMember::cmember>(ctm);
 
+    auto constexpr memFkn3 = delegate<void()>::memFkn<&TestMember::member>();
+    auto constexpr memFkn4 = delegate<void()>::memFkn<&TestMember::cmember>();
+
 #endif
 }
 
@@ -566,6 +569,36 @@ TEST(delegate, testMemberFunctionConst2)
     // Try const member functions on non const obj.
 }
 
+TEST(delegate, testMemberDisambiguateConst)
+{
+    struct ConstCheck
+    {
+        int member(int i)
+        {
+            return i + 1;
+        }
+        int member(int i) const
+        {
+            return i + 2;
+        }
+    };
+
+    ConstCheck obj;
+    const ConstCheck cobj;
+
+    delegate<int(int)> del;
+
+    // Ambiguous name w.r.t. const. Disambiguate on object.
+    del.set<ConstCheck, &ConstCheck::member>(obj);
+    int res = del(1);
+    EXPECT_EQ(res, 2);
+
+    // Ambiguous name w.r.t. const. Disambiguate on object.
+    del.set<ConstCheck, &ConstCheck::member>(cobj);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+}
+
 void
 testLambdaFunction()
 {
@@ -696,6 +729,91 @@ TEST(memberFkn, oneArgumentMemberFkn)
     // del.set<&MyTest::cfkn>(MyTest{});
 }
 
+#endif
+
+#if __cplusplus >= 201703
+
+// Helper struct to deduce member function types and const.
+template <typename T, T>
+struct DMType;
+
+template <typename T, typename R, typename... Args, R (T::*mf)(Args...)>
+struct DMType<R (T::*)(Args...), mf>
+{
+    using Result = delegate<R(Args...)>;
+    using ObjType = T;
+    static constexpr bool cnst = false;
+    static constexpr void* castPtr(ObjType* obj)
+    {
+        return static_cast<void*>(obj);
+    }
+
+    static constexpr auto build(ObjType& obj) -> delegate<R(Args...)>
+    {
+        using Del = class delegate<R(Args...)>;
+        return Del{nullptr, nullptr};
+    }
+};
+
+template <typename T, typename R, typename... Args, R (T::*mf)(Args...) const>
+struct DMType<R (T::*)(Args...) const, mf>
+{
+    using Result = delegate<R(Args...)>;
+    using ObjType = T;
+    static constexpr bool cnst = true;
+    //    static constexpr Trampoline trampoline = &doConstMemberCB<ObjType,
+    //    mf>;
+    static constexpr void* castPtr(ObjType const* obj)
+    {
+        return const_cast<void*>(static_cast<const void*>(obj));
+    };
+};
+
+template <typename R, typename... Args, R (*mf)(Args...)>
+struct DMType<R (*)(Args...), mf>
+{
+    using Result = delegate<R(Args...)>;
+    static constexpr auto build() -> delegate<R(Args...)>
+    {
+        using Del = class delegate<R(Args...)>;
+        return Del{};
+    }
+    //    static constexpr Trampoline trampoline = &doMemberCB<ObjType, mf>;
+};
+
+template <auto fkn>
+auto
+make_delegate() -> typename DMType<decltype(fkn), fkn>::Result
+{
+    using DM = DMType<decltype(fkn), fkn>;
+    return DM::build();
+}
+
+template <auto fkn>
+auto
+make_delegate(typename DMType<decltype(fkn), fkn>::ObjType& obj) ->
+    typename DMType<decltype(fkn), fkn>::Result
+{
+    using DM = DMType<decltype(fkn), fkn>;
+    return DM::build(obj);
+}
+
+struct TS
+{
+    void mem(int);
+};
+
+void
+testFkn2(int i)
+{
+}
+
+TEST(experimental, make_delegate)
+{
+    TS ts;
+    delegate<void(int)> del = make_delegate<&TS::mem>(ts);
+    del = make_delegate<testFkn2>();
+}
 #endif
 
 TEST(oldtests, testrun)

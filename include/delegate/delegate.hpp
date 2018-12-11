@@ -499,6 +499,7 @@ class delegate<R_(Args...)>
     struct DeduceMemberType<R (T::*)(Args...), mf>
     {
         using ObjType = T;
+        static constexpr bool cnst = false;
         static constexpr Trampoline trampoline = &doMemberCB<ObjType, mf>;
         static constexpr void* castPtr(ObjType* obj)
         {
@@ -509,6 +510,7 @@ class delegate<R_(Args...)>
     struct DeduceMemberType<R (T::*)(Args...) const, mf>
     {
         using ObjType = T;
+        static constexpr bool cnst = true;
         static constexpr Trampoline trampoline = &doConstMemberCB<ObjType, mf>;
         static constexpr void* castPtr(ObjType const* obj)
         {
@@ -563,12 +565,19 @@ class delegate<R_(Args...)>
     static constexpr delegate
     make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&&) = delete;
 
+    // MemFkn construction.
+    template <auto mFkn>
+    static constexpr auto memFkn()
+    {
+        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        return MemFkn<delegate, DM::cnst>{DM::trampoline};
+    }
 #endif
 
-  private:
     // Create ordinary free function pointer callback.
     constexpr delegate(Trampoline cb, void* ptr) : m_cb(cb), m_ptr(ptr) {}
 
+  private:
     Trampoline m_cb;
     void* m_ptr;
 };
