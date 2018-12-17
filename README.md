@@ -231,3 +231,41 @@ objects directly. The most common one given below.
                  { return x + 6; }));
         del = Del::make_fkn([](int x) -> int { return x + 6; }));
     }
+
+
+## A note on skipping constructor.
+
+Not using constructors is due to how template arguments are used.
+The delegate require class template arguments for the class and then
+function address argument for the set/make function template.
+
+Doing this with a constructor means the user needs to supply both
+the class and constructor argument at the same time.
+The syntax (if it is even possible) is not run of the mill.
+
+Using a static member function it becomes easier:
+
+    auto del = delegate<int(int)>::make<freeFkn>();
+
+    // Pseudocode for constructor alternative:
+    auto del = delegate<int(int)> /* some way to get <freeFkn> */ ();
+
+The price to pay is the extra '::make'.
+Another reason is that you can 'borrow' type information.
+
+    auto del = delegate<int(int)>{};
+    auto del2 = del.make<freeFkn>();
+
+
+### Alternative make_delegate free function.
+
+In the spirit of smart pointer one could use 'make_delegate' to construct a 
+delegate. However there is one thing to keep in mind. 
+The address of a function is given by the combination of the signature and
+the name. Hence make delegate would need to take both. E.g.
+
+    auto del = make_delegate<int(int), freeFkn>();
+
+Omitting the signature could work, but would be ambiguous as soon as the function is overloaded, severly affecting maintainability.
+This will not offer extra functionality over using the 'make' functions
+so there is currently no effort in supporting this.
