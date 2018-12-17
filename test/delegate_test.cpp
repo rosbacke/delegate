@@ -17,27 +17,31 @@ freeFkn(int x)
 }
 
 static int s_obj = 0;
-void testFkn12()
-{ s_obj = 1;}
+void
+testFkn12()
+{
+    s_obj = 1;
+}
 
-void testFkn12(int)
-{ s_obj = 2; }
-
-
+void
+testFkn12(int)
+{
+    s_obj = 2;
+}
 
 // Ensure the language uses the signature in the delegate type to disambiguate
 // function names.
 TEST(delegate, languageAllowPtrOverloadSet)
 {
-	delegate<void()> cb;
-	cb.set<testFkn12>();
-	cb();
-	EXPECT_EQ(s_obj, 1);
+    delegate<void()> cb;
+    cb.set<testFkn12>();
+    cb();
+    EXPECT_EQ(s_obj, 1);
 
-	delegate<void(int)> cb2;
-	cb2.set<testFkn12>();
-	cb2(1);
-	EXPECT_EQ(s_obj, 2);
+    delegate<void(int)> cb2;
+    cb2.set<testFkn12>();
+    cb2(1);
+    EXPECT_EQ(s_obj, 2);
 }
 
 TEST(delegate, Free_static_function_set_make)
@@ -50,6 +54,34 @@ TEST(delegate, Free_static_function_set_make)
 
     del.set<freeFkn>();
     EXPECT_EQ(del(1), 6);
+}
+
+TEST(delegate, Free_dynamic_function_set_make)
+{
+    auto del = delegate<int(int)>::make(freeFkn);
+    EXPECT_EQ(del(1), 6);
+
+    del = nullptr;
+    EXPECT_EQ(del(1), 0);
+
+    del.set(freeFkn);
+    EXPECT_EQ(del(1), 6);
+
+    // Make sure vanilla usage of lambda works. Rely on conversion to ordinary
+    // function pointer. (Requires explicit casting.)
+    del.set(static_cast<int (*)(int)>([](int x) -> int { return x + 9; }));
+    EXPECT_EQ(del(1), 10);
+
+    del = delegate<int(int)>::make(
+        static_cast<int (*)(int)>([](int x) -> int { return x + 9; }));
+    EXPECT_EQ(del(1), 10);
+
+    // Use another member name to get implicit function conversion.
+    del.set_fkn([](int x) -> int { return x + 9; });
+    EXPECT_EQ(del(1), 10);
+
+    del = delegate<int(int)>::make_fkn([](int x) -> int { return x + 9; });
+    EXPECT_EQ(del(1), 10);
 }
 
 TEST(delegate, value_semantics)
@@ -675,6 +707,13 @@ TEST(delegate, testLambdaConstFunctionConst2)
 
     res = cb2(6, 5);
     assert(res == 11);
+}
+
+TEST(delegate, Make_sure_our_union_is_a_void_size)
+{
+    delegate<int(int)> del;
+    EXPECT_EQ(sizeof del, 2 * sizeof(void*));
+    // If this fails, it could also be because sizeof fknptr != sizeof (void*)
 }
 
 #include <memory>
