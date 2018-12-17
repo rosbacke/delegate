@@ -1,4 +1,5 @@
 # delegate
+
 Embedded friendly std::function alternative. Never heap alloc, no exceptions
 
 ## Overview
@@ -36,15 +37,15 @@ Example use case:
 
     int main() 
     {
-	    Example e;
-        delegate<void(int)> cb;
+        Example e;
+        delegate<void(int)> del;
     
-        cb.set<&Example::memberFkn>(e); // C++17
-        cb.set<Example, &Example::memberFkn>(e); // C++11,C++14
-        cb(123);
+        del.set<&Example::memberFkn>(e); // C++17
+        del.set<Example, &Example::memberFkn>(e); // C++11,C++14
+        del(123);
     
-        cb.set<Example::staticFkn>();
-        cb(456);
+        del.set<Example::staticFkn>();
+        del(456);
     }
 
 
@@ -117,7 +118,7 @@ in a std::map for lookup and later supplied an object to be called on.
         int res = del(23);  // No delegate set, do default behavior.
         // res is now 0.
 
-        if (!del)  // cb return false if no fkn is stored. 
+        if (!del)  // del return false if no fkn is stored. 
             del.set<testFkn>(); // Set a new function to be called.
 
         res = del(1); 
@@ -143,11 +144,11 @@ Base case for free functions are covered above. For member functions see below.
         const Test ct;
 
         del.set<Test, &Test::member>(t);
-        res = cb(1); 
+        res = del(1); 
         // res is now 3.
 
         del.set<Test, &Test::cmember>(ct);
-        res = cb(1); 
+        res = del(1); 
         // res is now 4.
     }
 
@@ -170,11 +171,11 @@ For functors, the delegate expect the user to keep them alive.
         const TestF ct;
 
         del.set(t);
-        res = cb(1); 
+        res = delcb(1); 
         // res is now 3.
 
         del.set(ct);
-        res = cb(1); 
+        res = del(1); 
         // res is now 4.
     }
 
@@ -194,16 +195,16 @@ easy for the compiler to optimize compared to a fully static setup.
         delegate<int(int)> del;
 
         del.set(testFkn);
-        res = cb(1); 
+        res = del(1); 
         // res is now 6.
 
         del.set(static_cast<int(*)(int)>([](int x) -> int { return x + 6; }));
-        res = cb(1);
+        res = del(1);
         // res is now 7.
 
         // Or, use 'set_fkn' to get implicit conversion.
         del.set_fkn([](int x) -> int { return x + 7; });
-        res = cb(1);
+        res = del(1);
         // res is now 8.
     }
 
@@ -233,9 +234,10 @@ objects directly. The most common one given below.
     }
 
 
-## A note on skipping constructor.
+## A note on skipping constructors.
 
-Not using constructors is due to how template arguments are used.
+Not using constructors to set up functions is due to how template 
+arguments are used.
 The delegate require class template arguments for the class and then
 function address argument for the set/make function template.
 
@@ -250,7 +252,7 @@ Using a static member function it becomes easier:
     // Pseudocode for constructor alternative:
     auto del = delegate<int(int)> /* some way to get <freeFkn> */ ();
 
-The price to pay is the extra '::make'.
+The price to pay for normal static member function is the extra '::make'.
 Another reason is that you can 'borrow' type information.
 
     auto del = delegate<int(int)>{};
