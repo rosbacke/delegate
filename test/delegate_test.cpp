@@ -125,7 +125,7 @@ TEST(delegate, nulltests)
     EXPECT_FALSE(del != nullptr);
     EXPECT_FALSE(nullptr != del);
 
-    bool t = del;
+    bool t = static_cast<bool>(del);
     EXPECT_FALSE(t);
 
     struct Functor
@@ -144,7 +144,7 @@ TEST(delegate, nulltests)
     EXPECT_TRUE(del != nullptr);
     EXPECT_TRUE(nullptr != del);
 
-    bool t2 = del;
+    bool t2 = static_cast<bool>(del);
     EXPECT_TRUE(t2);
 
     del.clear();
@@ -736,6 +736,28 @@ TEST(delegate, special_case_that_should_work_uniqueptr)
 
     std::unique_ptr<int> up = del(12);
     EXPECT_EQ(*up, 12);
+}
+
+#include <set>
+
+static int
+freeFkn2(int x)
+{
+    return x + 6;
+}
+
+TEST(delegate, can_store_in_a_set)
+{
+    using Del = delegate<int(int)>;
+    auto del = Del::make<freeFkn>();
+    auto del2 = Del::make<freeFkn2>();
+    EXPECT_NE(del, del2);
+    EXPECT_NE(del.less(del2), del2.less(del));
+
+    std::set<Del, Del::Less> testSet;
+    testSet.insert(Del::make<freeFkn>());
+    testSet.insert(Del::make<freeFkn2>());
+    EXPECT_EQ(testSet.size(), 2);
 }
 
 static int

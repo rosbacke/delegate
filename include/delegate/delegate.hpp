@@ -110,21 +110,21 @@ class MemFkn
         return trampoline == Del::doNullFkn;
     }
 
-    constexpr bool equal(const MemFkn& rhs) const noexcept
+    static constexpr bool equal(const MemFkn& lhs, const MemFkn& rhs) noexcept
     {
-        return trampoline == rhs.trampoline;
+        return lhs.trampoline == rhs.trampoline;
     }
 
     // Define a total order for purpose of sorting in maps etc.
     // Do not define operators since this is not a natural total order.
     // It will vary randomly depending on where symbols end up etc.
-    constexpr bool less(const MemFkn& rhs) const noexcept
+    static constexpr bool less(const MemFkn& lhs, const MemFkn& rhs) noexcept
     {
-        return (null() && !rhs.null()) || trampoline < rhs.trampoline;
+        return (lhs.null() && !rhs.null()) || lhs.trampoline < rhs.trampoline;
     }
 
     // Return true if a function pointer is stored.
-    constexpr operator bool() const noexcept
+    constexpr explicit operator bool() const noexcept
     {
         return !null();
     }
@@ -230,7 +230,7 @@ class delegate<R_(Args...)>
     template <class T, R(freeFkn)(T const&, Args...)>
     inline static R dofreeFknWithObjectConstRef(DataPtr const& o, Args... args)
     {
-        T const* obj = static_cast<const T*>(o.cv_ptr);
+        T const* obj = static_cast<const T*>(o.v_ptr);
         return freeFkn(*obj, args...);
     }
 
@@ -253,36 +253,70 @@ class delegate<R_(Args...)>
         return m_cb == doNullFkn;
     }
 
-    constexpr bool equal(const delegate& rhs) const noexcept
+    static constexpr bool equal(const delegate& lhs,
+                                const delegate& rhs) noexcept
     {
         // Ugly, but the m_ptr part should be optimized away on normal
         // platforms.
-        return m_cb == rhs.m_cb &&
-               (m_cb == doRuntimeFkn ? (m_ptr.fkn_ptr == rhs.m_ptr.fkn_ptr)
-                                     : (m_ptr.v_ptr == rhs.m_ptr.v_ptr));
+        return lhs.m_cb == rhs.m_cb &&
+               (lhs.m_cb == doRuntimeFkn
+                    ? (lhs.m_ptr.fkn_ptr == rhs.m_ptr.fkn_ptr)
+                    : (lhs.m_ptr.v_ptr == rhs.m_ptr.v_ptr));
     }
+
+    constexpr bool equal(const delegate& rhs) const noexcept
+    {
+        return equal(*this, rhs);
+    }
+
+    // Helper Functor for passing into std functions etc.
+    struct Equal
+    {
+        constexpr bool operator()(const delegate& lhs,
+                                  const delegate& rhs) const noexcept
+        {
+            return equal(lhs, rhs);
+        }
+    };
 
     // Define a total order for purpose of sorting in maps etc.
     // Do not define operators since this is not a natural total order.
     // It will vary randomly depending on where symbols end up etc.
-    constexpr bool less(const delegate& rhs) const noexcept
+    static constexpr bool less(const delegate& lhs,
+                               const delegate& rhs) noexcept
     {
         // Ugly, but the m_ptr part should be optimized away on normal
         // platforms.
-        return (null() && !rhs.null()) //
-               || m_cb < rhs.m_cb      //
-               || (m_cb == rhs.m_cb &&
-                   (m_cb == doRuntimeFkn ? (m_ptr.fkn_ptr < rhs.m_ptr.fkn_ptr)
-                                         : (m_ptr.v_ptr < rhs.m_ptr.v_ptr)));
+        return (lhs.null() && !rhs.null()) //
+               || lhs.m_cb < rhs.m_cb      //
+               || (lhs.m_cb == rhs.m_cb &&
+                   (lhs.m_cb == doRuntimeFkn
+                        ? (lhs.m_ptr.fkn_ptr < rhs.m_ptr.fkn_ptr)
+                        : (lhs.m_ptr.v_ptr < rhs.m_ptr.v_ptr)));
     }
 
+    constexpr bool less(const delegate& rhs) const noexcept
+    {
+        return less(*this, rhs);
+    }
+
+    // Helper Functor for passing into std::map et.al.
+    struct Less
+    {
+        constexpr bool operator()(const delegate& lhs,
+                                  const delegate& rhs) const noexcept
+        {
+            return less(lhs, rhs);
+        }
+    };
+
     // Return true if a function pointer is stored.
-    constexpr operator bool() const noexcept
+    constexpr explicit operator bool() const noexcept
     {
         return !null();
     }
 
-    DELEGATE_CXX14CONSTEXPR void clear()
+    DELEGATE_CXX14CONSTEXPR void clear() noexcept
     {
         m_cb = doNullFkn;
         m_ptr.v_ptr = nullptr;
@@ -293,7 +327,7 @@ class delegate<R_(Args...)>
      * the pointer.
      */
     template <R (*fkn)(Args... args)>
-    DELEGATE_CXX14CONSTEXPR delegate& set()
+    DELEGATE_CXX14CONSTEXPR delegate& set() noexcept
     {
         m_cb = fkn ? &doFreeCB<fkn> : &doNullFkn;
         m_ptr.v_ptr = nullptr;
@@ -304,7 +338,7 @@ class delegate<R_(Args...)>
      * Create a callback to a member function to a given object.
      */
     template <class T, R (T::*memFkn)(Args... args)>
-    DELEGATE_CXX14CONSTEXPR delegate& set(T& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T& tr) noexcept
     {
         m_cb = &doMemberCB<T, memFkn>;
         m_ptr.v_ptr = static_cast<void*>(&tr);
@@ -312,7 +346,7 @@ class delegate<R_(Args...)>
     }
 
     template <class T, R (T::*memFkn)(Args... args) const>
-    DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr) noexcept
     {
         m_cb = &doConstMemberCB<T, memFkn>;
         m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
@@ -333,7 +367,7 @@ class delegate<R_(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(T& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T& tr) noexcept
     {
         m_cb = &doFunctor<T>;
         m_ptr.v_ptr = static_cast<void*>(&tr);
@@ -341,7 +375,7 @@ class delegate<R_(Args...)>
     }
 
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr)
+    DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr) noexcept
     {
         m_cb = &doConstFunctor<T>;
         m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
@@ -352,14 +386,14 @@ class delegate<R_(Args...)>
     template <class T>
     constexpr delegate& set(T&&) = delete;
 
-    DELEGATE_CXX14CONSTEXPR delegate& set(TargetFreeCB fkn)
+    DELEGATE_CXX14CONSTEXPR delegate& set(TargetFreeCB fkn) noexcept
     {
         m_cb = &doRuntimeFkn;
         m_ptr.fkn_ptr = fkn;
         return *this;
     }
 
-    DELEGATE_CXX14CONSTEXPR delegate& set_fkn(TargetFreeCB fkn)
+    DELEGATE_CXX14CONSTEXPR delegate& set_fkn(TargetFreeCB fkn) noexcept
     {
         return set(fkn);
     }
@@ -369,7 +403,7 @@ class delegate<R_(Args...)>
      * the pointer.
      */
     template <R (*fkn)(Args... args)>
-    static constexpr delegate make()
+    static constexpr delegate make() noexcept
     {
         return delegate{fkn ? &doFreeCB<fkn> : &doNullFkn,
                         static_cast<void*>(nullptr)};
@@ -379,13 +413,13 @@ class delegate<R_(Args...)>
      * Create a callback to a member function to a given object.
      */
     template <class T, R (T::*memFkn)(Args... args)>
-    static constexpr delegate make(T& o)
+    static constexpr delegate make(T& o) noexcept
     {
         return delegate{&doMemberCB<T, memFkn>, static_cast<void*>(&o)};
     }
 
     template <class T, R (T::*memFkn)(Args... args) const>
-    static constexpr delegate make(const T& o)
+    static constexpr delegate make(const T& o) noexcept
     {
         return delegate{&doConstMemberCB<T, memFkn>,
                         const_cast<void*>(static_cast<const void*>(&o))};
@@ -398,12 +432,12 @@ class delegate<R_(Args...)>
      * Hence, we do not accept functor r-values.
      */
     template <class T>
-    static constexpr delegate make(T& o)
+    static constexpr delegate make(T& o) noexcept
     {
         return delegate{&doFunctor<T>, static_cast<void*>(&o)};
     }
     template <class T>
-    static constexpr delegate make(T const& o)
+    static constexpr delegate make(T const& o) noexcept
     {
         return delegate{&doConstFunctor<T>,
                         const_cast<void*>(static_cast<const void*>(&o))};
@@ -411,12 +445,12 @@ class delegate<R_(Args...)>
     template <class T>
     static constexpr delegate make(T&& object) = delete;
 
-    static constexpr delegate make(TargetFreeCB fkn)
+    static constexpr delegate make(TargetFreeCB fkn) noexcept
     {
         return delegate{&doRuntimeFkn, fkn};
     }
 
-    static constexpr delegate make_fkn(TargetFreeCB fkn)
+    static constexpr delegate make_fkn(TargetFreeCB fkn) noexcept
     {
         return delegate{&doRuntimeFkn, fkn};
     }
@@ -428,14 +462,14 @@ class delegate<R_(Args...)>
      * of the delegate.
      */
     template <typename T, R (*fkn)(T&, Args...)>
-    static constexpr delegate make(T& o)
+    static constexpr delegate make(T& o) noexcept
     {
         return delegate{&dofreeFknWithObjectRef<T, fkn>,
                         static_cast<void*>(&o)};
     }
 
     template <typename T, R (*fkn)(T const&, Args...)>
-    static constexpr delegate make(T& o)
+    static constexpr delegate make(T& o) noexcept
     {
         return delegate{&dofreeFknWithObjectConstRef<T, fkn>,
                         static_cast<void const*>(&o)};
@@ -451,7 +485,7 @@ class delegate<R_(Args...)>
      * When calling, add the stored void* pointer as first argument.
      */
     template <Trampoline fkn>
-    static constexpr delegate makeVoidCB(void* ptr = nullptr)
+    static constexpr delegate makeVoidCB(void* ptr = nullptr) noexcept
     {
         return delegate(fkn, ptr);
     }
@@ -461,7 +495,8 @@ class delegate<R_(Args...)>
      * When calling, add the stored void* pointer as first argument.
      * Accept pointer as runtime argument.
      */
-    static constexpr delegate makeVoidCB(Trampoline fkn, void* ptr = nullptr)
+    static constexpr delegate makeVoidCB(Trampoline fkn,
+                                         void* ptr = nullptr) noexcept
     {
         return delegate(fkn, ptr);
     }
@@ -473,13 +508,13 @@ class delegate<R_(Args...)>
      * information compared to the delegate.
      */
     template <class T, R (T::*memFkn_)(Args... args) const>
-    static constexpr MemFkn<delegate, true> memFkn()
+    static constexpr MemFkn<delegate, true> memFkn() noexcept
     {
         return MemFkn<delegate, true>{&doConstMemberCB<T, memFkn_>};
     }
 
     template <class T, R (T::*memFkn_)(Args... args)>
-    static constexpr MemFkn<delegate, false> memFkn()
+    static constexpr MemFkn<delegate, false> memFkn() noexcept
     {
         return MemFkn<delegate, false>{&doMemberCB<T, memFkn_>};
     }
@@ -488,21 +523,24 @@ class delegate<R_(Args...)>
      * Combine a MemFkn with an object to set this delegate.
      */
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, false> f, T& o)
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, false> f,
+                                          T& o) noexcept
     {
         m_cb = f.trampoline;
         m_ptr = static_cast<void*>(&o);
         return *this;
     }
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f, T const& o)
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f,
+                                          T const& o) noexcept
     {
         m_cb = f.trampoline;
         m_ptr = const_cast<void*>(static_cast<const void*>(&o));
         return *this;
     }
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f, T& o)
+    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f,
+                                          T& o) noexcept
     {
         return set(f, static_cast<T const&>(o));
     }
@@ -515,7 +553,7 @@ class delegate<R_(Args...)>
                                           T&& o) = delete;
 
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, false> f, T& o)
+    static constexpr delegate make(MemFkn<delegate, false> f, T& o) noexcept
     {
         return delegate{f.trampoline, static_cast<void*>(&o)};
     }
@@ -523,13 +561,14 @@ class delegate<R_(Args...)>
     static constexpr delegate make(MemFkn<delegate, false>, T const&) = delete;
 
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, true> f, T const& o)
+    static constexpr delegate make(MemFkn<delegate, true> f,
+                                   T const& o) noexcept
     {
         return delegate{f.trampoline,
                         const_cast<void*>(static_cast<const void*>(&o))};
     }
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, true> f, T& o)
+    static constexpr delegate make(MemFkn<delegate, true> f, T& o) noexcept
     {
         return delegate{f.trampoline, static_cast<void*>(&o)};
     }
@@ -549,7 +588,7 @@ class delegate<R_(Args...)>
         using ObjType = T;
         static constexpr bool cnst = false;
         static constexpr Trampoline trampoline = &doMemberCB<ObjType, mf>;
-        static constexpr void* castPtr(ObjType* obj)
+        static constexpr void* castPtr(ObjType* obj) noexcept
         {
             return static_cast<void*>(obj);
         }
@@ -560,7 +599,7 @@ class delegate<R_(Args...)>
         using ObjType = T;
         static constexpr bool cnst = true;
         static constexpr Trampoline trampoline = &doConstMemberCB<ObjType, mf>;
-        static constexpr void* castPtr(ObjType const* obj)
+        static constexpr void* castPtr(ObjType const* obj) noexcept
         {
             return const_cast<void*>(static_cast<const void*>(obj));
         };
@@ -572,7 +611,7 @@ class delegate<R_(Args...)>
 
     template <auto mFkn>
     constexpr delegate&
-    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj)
+    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj) noexcept
     {
         using DM = DeduceMemberType<decltype(mFkn), mFkn>;
         m_cb = DM::trampoline;
@@ -581,7 +620,8 @@ class delegate<R_(Args...)>
     }
     template <auto mFkn>
     constexpr delegate&
-    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const& obj)
+    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const&
+            obj) noexcept
     {
         using DM = DeduceMemberType<decltype(mFkn), mFkn>;
         m_cb = DM::trampoline;
@@ -595,14 +635,15 @@ class delegate<R_(Args...)>
 
     template <auto mFkn>
     static constexpr delegate
-    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj)
+    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj) noexcept
     {
         using DM = DeduceMemberType<decltype(mFkn), mFkn>;
         return delegate{DM::trampoline, DM::castPtr(&obj)};
     }
     template <auto mFkn>
     static constexpr delegate
-    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const& obj)
+    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const&
+             obj) noexcept
     {
         using DM = DeduceMemberType<decltype(mFkn), mFkn>;
         return delegate{DM::trampoline, DM::castPtr(&obj)};
@@ -615,7 +656,7 @@ class delegate<R_(Args...)>
 
     // MemFkn construction.
     template <auto mFkn>
-    static constexpr auto memFkn()
+    static constexpr auto memFkn() noexcept
     {
         using DM = DeduceMemberType<decltype(mFkn), mFkn>;
         return MemFkn<delegate, DM::cnst>{DM::trampoline};
@@ -624,12 +665,18 @@ class delegate<R_(Args...)>
 
   private:
     // Create ordinary free function pointer callback.
-    constexpr delegate(Trampoline cb, void* ptr) : m_cb(cb), m_ptr(ptr) {}
+    constexpr delegate(Trampoline cb, void* ptr) noexcept : m_cb(cb), m_ptr(ptr)
+    {
+    }
 
     // Create ordinary free function pointer callback.
-    constexpr delegate(Trampoline cb, const void* ptr) : m_cb(cb), m_ptr(ptr) {}
+    constexpr delegate(Trampoline cb, const void* ptr) noexcept
+        : m_cb(cb), m_ptr(ptr)
+    {
+    }
 
-    constexpr delegate(Trampoline cb, TargetFreeCB fkn) : m_cb(cb), m_ptr(fkn)
+    constexpr delegate(Trampoline cb, TargetFreeCB fkn) noexcept
+        : m_cb(cb), m_ptr(fkn)
     {
     }
 
@@ -639,14 +686,16 @@ class delegate<R_(Args...)>
 
 template <typename R, typename... Args>
 constexpr bool
-operator==(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs)
+operator==(const delegate<R(Args...)>& lhs,
+           const delegate<R(Args...)>& rhs) noexcept
 {
-    return lhs.equal(rhs);
+    return delegate<R(Args...)>::equal(lhs, rhs);
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator!=(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs)
+operator!=(const delegate<R(Args...)>& lhs,
+           const delegate<R(Args...)>& rhs) noexcept
 {
     return !(lhs == rhs);
 }
@@ -654,35 +703,53 @@ operator!=(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs)
 // Bite the bullet, this is how unique_ptr handle nullptr_t.
 template <typename R, typename... Args>
 constexpr bool
-operator==(std::nullptr_t lhs, const delegate<R(Args...)>& rhs)
+operator==(std::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
 {
     return rhs.null();
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator!=(std::nullptr_t lhs, const delegate<R(Args...)>& rhs)
+operator!=(std::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
 {
     return !(lhs == rhs);
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator==(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
+operator==(const delegate<R(Args...)>& lhs, std::nullptr_t rhs) noexcept
 {
     return lhs.null();
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs)
+operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs) noexcept
 {
     return !(lhs == rhs);
 }
 
 // No ordering operators ( operator< etc) defined. This delegate
 // represent several classes of pointers and is not a naturally
-// ordered type.
+// ordered type. Use members less, Less for explicit ordering.
+
+// Delete ordering operators.
+template <typename R, typename... Args>
+constexpr bool
+operator<(const delegate<R(Args...)>& lhs,
+          const delegate<R(Args...)>& rhs) = delete;
+template <typename R, typename... Args>
+constexpr bool
+operator>(const delegate<R(Args...)>& lhs,
+          const delegate<R(Args...)>& rhs) = delete;
+template <typename R, typename... Args>
+constexpr bool
+operator<=(const delegate<R(Args...)>& lhs,
+           const delegate<R(Args...)>& rhs) = delete;
+template <typename R, typename... Args>
+constexpr bool
+operator>=(const delegate<R(Args...)>& lhs,
+           const delegate<R(Args...)>& rhs) = delete;
 
 /**
  * Helper macro to create a delegate for calling a member function.
