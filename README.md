@@ -27,7 +27,7 @@ allows the optimizer to see through part of the call.
 
 Example use case:
 
-    #include "delegate/delegtate.hpp"
+    #include "delegate/delegate.hpp"
     
     struct Example {
 	    static void staticFkn(int) {};
@@ -56,9 +56,14 @@ Example use case:
     
   * Implement type erasure. The delegate need to only contain
     enough type information to do a call. Additional type information
-    should be hidden from the one instantiationg a delegate object.
-    Do note that the MemFkn have more type information since it 
-    tracks constness of the member function.
+    should be hidden from the one instantiating a delegate object.
+
+  * Support several call mechanisms. Supports:
+    - Call to member function.
+    - Call to free function.
+    - Call to functors (by reference).
+    - Call to stateless lambdas.
+    - Extra call operations such as passing on stored void pointer.
     
   * It is always safe to call the delegate. In the null state a call will not
     do anything and return a default constructed return value.
@@ -69,17 +74,21 @@ Example use case:
   * Observe constness. Stored const objects references can only be called by
     by const member functions or via operator() const.
     
-  * Having 2 different ways to change values. Static functions 'make' to construct
-    a new delegate or member function 'set' to change a delegate in-place.
+  * Delegate have two main way to set a function to be called:
+    - set: Member function for setting a new value to an already existing delegate.
+    - make: Static functions for constructing new delegate objects.
+    Do note that constructors isn't used for function setup. See discussion later
+    on why.
     
   * Be usable with C++11 while offering more functionality for later editions.
-    Most of it works in C++11. C++14 adds constexpr on 'set' functions. C++17 adds
-    simplified member function pointer setup using template<auto>.
+    - C++11 offer most functionality.
+    - C++14 add constexpr on 'set' functions.
+    - C++17 allow for simpler member function setup using template&lt;auto&gt;.
     
   * Discourage lifetime issues. Will not allow storing a reference to a temporary
     (rvalue-reference) to objects.
     
-  * Be constexpr friendly. As much as possible should be delared constexpr. 
+  * Be constexpr and exception friendly. As much as possible should be delared constexpr and noexcept. 
   
 ## MemFkn
 
@@ -90,4 +99,135 @@ It does allow encapsulating a member function pointer and treat it as any other
 value type. It can be stored, compared and copied around. Could e.g. be set up
 in a std::map for lookup and later supplied an object to be called on.
 
- 
+## Delegate examples
+
+    #include "delegate/delegate.hpp"
+
+    int testFkn(int x)
+    {
+       return x + 1;
+    }
+
+    int main()
+    {
+        // Only need to know enough type information to construct
+        // the signature used during a call of the delegate. E.g.
+
+        delegate<int(int)> del;
+        int res = del(23);  // No delegate set, do default behavior.
+        // res is now 0.
+
+        if (!del)  // cb return false if no fkn is stored. 
+            del.set<testFkn>(); // Set a new function to be called.
+
+        res = del(1); 
+        // res is now 2.
+    }
+
+Base case for free functions are covered above. For member functions see below.
+
+    #include "delegate/delegate.hpp"
+
+    struct Test
+    {
+        int member(int x)
+        { return x + 2; }
+        int cmember(int x) const
+        { return x + 3; }
+    };
+
+    int main()
+    {
+        delegate<int(int)> del;
+        Test t;
+        const Test ct;
+
+        del.set<Test, &Test::member>(t);
+        res = cb(1); 
+        // res is now 3.
+
+        del.set<Test, &Test::cmember>(ct);
+        res = cb(1); 
+        // res is now 4.
+    }
+
+For functors, the delegate expect the user to keep them alive.
+
+    #include "delegate/delegate.hpp"
+
+    struct TestF
+    {
+        int operator()(int x)
+        { return x + 2; }
+        int operator()(int x) const
+        { return x + 3; }
+    };
+
+    int main()
+    {
+        delegate<int(int)> del;
+        TestF t;
+        const TestF ct;
+
+        del.set(t);
+        res = cb(1); 
+        // res is now 3.
+
+        del.set(ct);
+        res = cb(1); 
+        // res is now 4.
+    }
+
+Delegate can rely on stateless lambdas to convert to function pointers. In this
+case we use runtime storage of the function pointer. Do note it will be less
+easy for the compiler to optimize compared to a fully static setup.
+
+    #include "delegate/delegate.hpp"
+
+    int testFkn(int x)
+    {
+       return x + 5;
+    }
+
+    int main()
+    {
+        delegate<int(int)> del;
+
+        del.set(testFkn);
+        res = cb(1); 
+        // res is now 6.
+
+        del.set(static_cast<int(*)(int)>([](int x) -> int { return x + 6; }));
+        res = cb(1);
+        // res is now 7.
+
+        // Or, use 'set_fkn' to get implicit conversion.
+        del.set_fkn([](int x) -> int { return x + 7; });
+        res = cb(1);
+        // res is now 8.
+    }
+
+Except the set function, one can use 'make' static functions to build delegate
+objects directly. The most common one given below.
+
+    #include "delegate/delegate.hpp"
+
+    // .. types as before.
+
+    int main()
+    {
+        using Del = delegate<int(int)>;
+        Del del;
+
+        Test t;  // For members.
+        TestF functor; // For functor.
+
+        del = Del::make<testFkn>();
+        del = Del::make<Test, &Test::member>(t);
+
+        del = Del::make(functor);
+
+        del = Del::make(static_cast<int(*)(int)>([](int x) -> int 
+                 { return x + 6; }));
+        del = Del::make_fkn([](int x) -> int { return x + 6; }));
+    }
