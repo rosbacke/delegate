@@ -9,6 +9,7 @@
 #define DELEGATE_DELEGATE_HPP_
 
 #include <cstddef> // nullptr_t
+#include <cstdint> // uintptr_t
 
 /**
  * Simple storage of a callable object for functors, free and member functions.
@@ -148,8 +149,23 @@ class delegate<R_(Args...)>
     friend class MemFkn<delegate, false>;
     friend class MemFkn<delegate, true>;
 
+    // Signature presented to the user when calling the callback.
+    using TargetFreeCB = R (*)(Args...);
+
+    union DataPtr {
+        constexpr DataPtr() = default;
+        constexpr DataPtr(void* p) noexcept : v_ptr(p){};
+        constexpr DataPtr(TargetFreeCB p) noexcept : fkn_ptr(p){};
+
+        void* v_ptr = nullptr;
+        TargetFreeCB fkn_ptr;
+    };
+
+    // Type of the function pointer for the trampoline functions.
+    using Trampoline = R (*)(DataPtr const&, Args...);
+
     // Adaptor function for when the delegate is expected to be a nullptr.
-    inline static R doNullFkn(void* v, Args... args)
+    inline static R doNullFkn(DataPtr const& v, Args... args)
     {
         return details::nullReturnFunction<R>();
     }
@@ -157,71 +173,71 @@ class delegate<R_(Args...)>
     // Adaptor function for the case where void* is not forwarded
     // to the caller. (Just a normal function pointer.)
     template <R(freeFkn)(Args...)>
-    inline static R doFreeCB(void* v, Args... args)
+    inline static R doFreeCB(DataPtr const& v, Args... args)
     {
         return freeFkn(args...);
     }
 
     // Adapter function for the member + object calling.
     template <class T, R (T::*memFkn)(Args...)>
-    inline static R doMemberCB(void* o, Args... args)
+    inline static R doMemberCB(DataPtr const& o, Args... args)
     {
-        T* obj = static_cast<T*>(o);
+        T* obj = static_cast<T*>(o.v_ptr);
         return (((*obj).*(memFkn))(args...));
     }
 
     // Adapter function for the member + object calling.
     template <class T, R (T::*memFkn)(Args...) const>
-    inline static R doConstMemberCB(void* o, Args... args)
+    inline static R doConstMemberCB(DataPtr const& o, Args... args)
     {
-        T const* obj = static_cast<T*>(o);
+        T const* obj = static_cast<T const*>(o.v_ptr);
         return (((*obj).*(memFkn))(args...));
+    }
+
+    // Adapter function for when the stored object is a pointer to a
+    // callable object (stored elsewhere). Call it using operator().
+    template <class Functor>
+    inline static R doFunctor(DataPtr const& o_arg, Args... args)
+    {
+        auto obj = static_cast<Functor*>(o_arg.v_ptr);
+        return (*obj)(args...);
+    }
+
+    template <class Functor>
+    inline static R doConstFunctor(DataPtr const& o_arg, Args... args)
+    {
+        const Functor* obj = static_cast<Functor const*>(o_arg.v_ptr);
+        return (*obj)(args...);
+    }
+
+    inline static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
+    {
+        TargetFreeCB fkn = o_arg.fkn_ptr;
+        return fkn(args...);
     }
 
     // Adapter function for the free function with extra first arg
     // in the called function, set at delegate construction.
     template <class T, R(freeFkn)(T&, Args...)>
-    inline static R dofreeFknWithObjectRef(void* o, Args... args)
+    inline static R dofreeFknWithObjectRef(DataPtr const& o, Args... args)
     {
-        T* obj = static_cast<T*>(o);
+        T* obj = static_cast<T*>(o.v_ptr);
         return freeFkn(*obj, args...);
     }
 
     // Adapter function for the free function with extra first arg
     // in the called function, set at delegate construction.
     template <class T, R(freeFkn)(T const&, Args...)>
-    inline static R dofreeFknWithObjectConstRef(void* o, Args... args)
+    inline static R dofreeFknWithObjectConstRef(DataPtr const& o, Args... args)
     {
-        T const* obj = static_cast<T*>(o);
+        T const* obj = static_cast<const T*>(o.cv_ptr);
         return freeFkn(*obj, args...);
     }
-
-    // Adapter function for when the stored object is a pointer to a
-    // callable object (stored elsewhere). Call it using operator().
-    template <class Functor>
-    inline static R doFunctor(void* o_arg, Args... args)
-    {
-        auto obj = static_cast<Functor*>(o_arg);
-        return (*obj)(args...);
-    }
-
-    template <class Functor>
-    inline static R doConstFunctor(void* o_arg, Args... args)
-    {
-        const Functor* obj = static_cast<Functor*>(o_arg);
-        return (*obj)(args...);
-    }
-
-    // Type of the function pointer for the trampoline functions.
-    using Trampoline = R (*)(void*, Args...);
-
-    // Signature presented to the user when calling the callback.
-    using TargetFreeCB = R (*)(Args...);
 
   public:
     // Default construct with stored ptr == nullptr.
     constexpr delegate(const std::nullptr_t& nptr = nullptr) noexcept
-        : m_cb(&doNullFkn), m_ptr(nullptr){};
+        : m_cb(&doNullFkn){};
 
     ~delegate() = default;
 
@@ -239,7 +255,11 @@ class delegate<R_(Args...)>
 
     constexpr bool equal(const delegate& rhs) const noexcept
     {
-        return m_cb == rhs.m_cb && m_ptr == rhs.m_ptr;
+        // Ugly, but the m_ptr part should be optimized away on normal
+        // platforms.
+        return m_cb == rhs.m_cb &&
+               (m_cb == doRuntimeFkn ? (m_ptr.fkn_ptr == rhs.m_ptr.fkn_ptr)
+                                     : (m_ptr.v_ptr == rhs.m_ptr.v_ptr));
     }
 
     // Define a total order for purpose of sorting in maps etc.
@@ -247,8 +267,13 @@ class delegate<R_(Args...)>
     // It will vary randomly depending on where symbols end up etc.
     constexpr bool less(const delegate& rhs) const noexcept
     {
-        return (null() && !rhs.null()) || m_cb < rhs.m_cb ||
-               (m_cb == rhs.m_cb && m_ptr < rhs.m_ptr);
+        // Ugly, but the m_ptr part should be optimized away on normal
+        // platforms.
+        return (null() && !rhs.null()) //
+               || m_cb < rhs.m_cb      //
+               || (m_cb == rhs.m_cb &&
+                   (m_cb == doRuntimeFkn ? (m_ptr.fkn_ptr < rhs.m_ptr.fkn_ptr)
+                                         : (m_ptr.v_ptr < rhs.m_ptr.v_ptr)));
     }
 
     // Return true if a function pointer is stored.
@@ -260,7 +285,7 @@ class delegate<R_(Args...)>
     DELEGATE_CXX14CONSTEXPR void clear()
     {
         m_cb = doNullFkn;
-        m_ptr = nullptr;
+        m_ptr.v_ptr = nullptr;
     }
 
     /**
@@ -271,7 +296,7 @@ class delegate<R_(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set()
     {
         m_cb = fkn ? &doFreeCB<fkn> : &doNullFkn;
-        m_ptr = nullptr;
+        m_ptr.v_ptr = nullptr;
         return *this;
     }
 
@@ -282,7 +307,7 @@ class delegate<R_(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set(T& tr)
     {
         m_cb = &doMemberCB<T, memFkn>;
-        m_ptr = static_cast<void*>(&tr);
+        m_ptr.v_ptr = static_cast<void*>(&tr);
         return *this;
     }
 
@@ -290,7 +315,7 @@ class delegate<R_(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr)
     {
         m_cb = &doConstMemberCB<T, memFkn>;
-        m_ptr = const_cast<void*>(static_cast<const void*>(&tr));
+        m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
         return *this;
     }
 
@@ -311,7 +336,7 @@ class delegate<R_(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set(T& tr)
     {
         m_cb = &doFunctor<T>;
-        m_ptr = static_cast<void*>(&tr);
+        m_ptr.v_ptr = static_cast<void*>(&tr);
         return *this;
     }
 
@@ -319,13 +344,25 @@ class delegate<R_(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr)
     {
         m_cb = &doConstFunctor<T>;
-        m_ptr = const_cast<void*>(static_cast<const void*>(&tr));
+        m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
         return *this;
     }
 
     // Do not allow temporaries to be stored.
     template <class T>
     constexpr delegate& set(T&&) = delete;
+
+    DELEGATE_CXX14CONSTEXPR delegate& set(TargetFreeCB fkn)
+    {
+        m_cb = &doRuntimeFkn;
+        m_ptr.fkn_ptr = fkn;
+        return *this;
+    }
+
+    DELEGATE_CXX14CONSTEXPR delegate& set_fkn(TargetFreeCB fkn)
+    {
+        return set(fkn);
+    }
 
     /**
      * Create a callback to a free function with a specific type on
@@ -334,7 +371,8 @@ class delegate<R_(Args...)>
     template <R (*fkn)(Args... args)>
     static constexpr delegate make()
     {
-        return delegate{fkn ? &doFreeCB<fkn> : &doNullFkn, nullptr};
+        return delegate{fkn ? &doFreeCB<fkn> : &doNullFkn,
+                        static_cast<void*>(nullptr)};
     }
 
     /**
@@ -373,6 +411,16 @@ class delegate<R_(Args...)>
     template <class T>
     static constexpr delegate make(T&& object) = delete;
 
+    static constexpr delegate make(TargetFreeCB fkn)
+    {
+        return delegate{&doRuntimeFkn, fkn};
+    }
+
+    static constexpr delegate make_fkn(TargetFreeCB fkn)
+    {
+        return delegate{&doRuntimeFkn, fkn};
+    }
+
     /**
      * Create a delegate to a free function, where the first argument is
      * assumed to be a reference to the object supplied as argument here.
@@ -390,7 +438,7 @@ class delegate<R_(Args...)>
     static constexpr delegate make(T& o)
     {
         return delegate{&dofreeFknWithObjectConstRef<T, fkn>,
-                        const_cast<void*>(static_cast<void const*>(&o))};
+                        static_cast<void const*>(&o)};
     }
 
     template <typename T, R (*fkn)(T&, Args...)>
@@ -574,12 +622,19 @@ class delegate<R_(Args...)>
     }
 #endif
 
+  private:
     // Create ordinary free function pointer callback.
     constexpr delegate(Trampoline cb, void* ptr) : m_cb(cb), m_ptr(ptr) {}
 
-  private:
+    // Create ordinary free function pointer callback.
+    constexpr delegate(Trampoline cb, const void* ptr) : m_cb(cb), m_ptr(ptr) {}
+
+    constexpr delegate(Trampoline cb, TargetFreeCB fkn) : m_cb(cb), m_ptr(fkn)
+    {
+    }
+
     Trampoline m_cb;
-    void* m_ptr;
+    DataPtr m_ptr;
 };
 
 template <typename R, typename... Args>
