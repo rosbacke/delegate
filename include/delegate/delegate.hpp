@@ -329,7 +329,7 @@ class delegate<R_(Args...)>
     template <R (*fkn)(Args... args)>
     DELEGATE_CXX14CONSTEXPR delegate& set() noexcept
     {
-        m_cb = fkn ? &doFreeCB<fkn> : &doNullFkn;
+        m_cb = &doFreeCB<fkn>;
         m_ptr.v_ptr = nullptr;
         return *this;
     }
@@ -405,8 +405,8 @@ class delegate<R_(Args...)>
     template <R (*fkn)(Args... args)>
     static constexpr delegate make() noexcept
     {
-        return delegate{fkn ? &doFreeCB<fkn> : &doNullFkn,
-                        static_cast<void*>(nullptr)};
+        // Note: template arg can never be nullptr.
+        return delegate{&doFreeCB<fkn>, static_cast<void*>(nullptr)};
     }
 
     /**

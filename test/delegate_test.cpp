@@ -537,7 +537,9 @@ TEST(delegate, test_constexpr)
     auto constexpr del19 = delegate<void()>::make<&TestMember::cmember>(ctm);
 
     auto constexpr memFkn3 = delegate<void()>::memFkn<&TestMember::member>();
+    (void)memFkn3;
     auto constexpr memFkn4 = delegate<void()>::memFkn<&TestMember::cmember>();
+    (void)memFkn4;
 #endif
 }
 
@@ -689,6 +691,7 @@ TEST(delegate, testLambdaConstFunctionConst2)
 
     const FunctorC fkn;
     const FunctorC fkn2 = fkn;
+    (void)fkn2;
 
     // Create simple callback object with operator().
     auto cb = delegate<int(int, int)>::make(fkn);
@@ -757,19 +760,7 @@ TEST(delegate, can_store_in_a_set)
     std::set<Del, Del::Less> testSet;
     testSet.insert(Del::make<freeFkn>());
     testSet.insert(Del::make<freeFkn2>());
-    EXPECT_EQ(testSet.size(), 2);
-}
-
-static int
-testAdd(int x, int y)
-{
-    return x + y;
-}
-
-static int
-testDiff(int x, int y)
-{
-    return x - y;
+    EXPECT_EQ(testSet.size(), 2u);
 }
 
 struct TestObj
