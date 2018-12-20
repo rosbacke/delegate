@@ -1,6 +1,7 @@
 # delegate
 
-Embedded friendly std::function alternative. Never heap alloc, no exceptions
+Embedded friendly std::function alternative. Never heap alloc, no exceptions. Is
+trivially_copyable.
 
 ## Overview
 
@@ -18,7 +19,10 @@ The user needs to handle the lifetime of a refered object.
 In addition the delegation object has a smaller footprint compared to common std::function 
 implementations, using only 2 pointers (free function pointer and void pointer).
 It avoids virtual dispatch internally. That result in small object code footprint and 
-allows the optimizer to see through part of the call.
+allows the optimizer to see through part of the call. This also means it fulfills the requirements
+for being trivially_copyable, meaning it can safely be memcpy:ied between objects.
+See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp/types/is_trivially_copyable)
+
 
 ## Quick start.
 - clone the repo.
