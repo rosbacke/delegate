@@ -56,6 +56,22 @@ TEST(delegate, Free_static_function_set_make)
     EXPECT_EQ(del(1), 6);
 }
 
+TEST(delegate, Free_dynamic_function_constructor)
+{
+    using Del = delegate<int(int)>;
+    Del del;
+    EXPECT_FALSE(del);
+    Del del2(freeFkn);
+    EXPECT_EQ(del2(1), 6);
+
+    // Handle implicit conversion from stateless lambda to fkn ptr.
+    Del del3([](int x) -> int { return x + 7; });
+    EXPECT_EQ(del3(1), 8);
+
+    auto del4 = Del{[](int x) -> int { return x + 9; }};
+    EXPECT_EQ(del4(1), 10);
+}
+
 TEST(delegate, Free_dynamic_function_set_make)
 {
     auto del = delegate<int(int)>::make(freeFkn);
@@ -112,6 +128,19 @@ TEST(delegate, value_semantics)
     EXPECT_TRUE(del4 != del1);
 }
 
+TEST(delegate, is_trivially_copyable)
+{
+    // Note: being constexpr and trivial is mutually exclusive.
+    // Trivial require default initialization do not set a value,
+    // constexpr require to set a value.
+    // We can fulfill _trivially_copyable -> this class can safely be
+    // memcpy:ied between places.
+
+    using Del = delegate<int(int)>;
+    EXPECT_TRUE(std::is_trivially_copyable<Del>::value);
+    EXPECT_TRUE(std::is_standard_layout<Del>::value);
+}
+
 TEST(delegate, nulltests)
 {
     // Default construct, Can call default constructed.
@@ -127,6 +156,12 @@ TEST(delegate, nulltests)
 
     bool t = static_cast<bool>(del);
     EXPECT_FALSE(t);
+
+    delegate<void()> del2(nullptr);
+    EXPECT_FALSE(del2);
+
+    delegate<void()> del3(0);
+    EXPECT_FALSE(del3);
 
     struct Functor
     {
@@ -504,9 +539,9 @@ TEST(delegate, test_constexpr)
 
     // MemFkn
     auto constexpr memFkn =
-        delegate<void()>{}.memFkn<TestMember, &TestMember::member>();
+        delegate<void()>::memFkn<TestMember, &TestMember::member>();
     auto constexpr memFkn2 =
-        delegate<void()>{}.memFkn<TestMember, &TestMember::cmember>();
+        delegate<void()>::memFkn<TestMember, &TestMember::cmember>();
     auto CXX_14CONSTEXPR del12 = delegate<void()>{}.set(memFkn, s_f);
     auto CXX_14CONSTEXPR del14 = delegate<void()>{}.set(memFkn2, s_cf);
 

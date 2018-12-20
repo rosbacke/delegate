@@ -236,8 +236,13 @@ class delegate<R_(Args...)>
 
   public:
     // Default construct with stored ptr == nullptr.
-    constexpr delegate(const std::nullptr_t& nptr = nullptr) noexcept
-        : m_cb(&doNullFkn){};
+    constexpr delegate() = default;
+
+    // General simple function pointer handling. Will accept stateless lambdas.
+    // Do note it is less easy to optimize compared to static function setup.
+    // Handle nullptr / 0 arguments as well.
+    constexpr delegate(TargetFreeCB fkn) noexcept
+        : m_cb(fkn == nullptr ? &doNullFkn : &doRuntimeFkn), m_ptr(fkn){};
 
     ~delegate() = default;
 
@@ -680,7 +685,7 @@ class delegate<R_(Args...)>
     {
     }
 
-    Trampoline m_cb;
+    Trampoline m_cb = &doNullFkn;
     DataPtr m_ptr;
 };
 
