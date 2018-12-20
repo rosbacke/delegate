@@ -522,20 +522,27 @@ TEST(delegate, test_constexpr)
 {
     // Default construct.
     auto constexpr del = delegate<void()>{};
+    (void)del;
 
     // Set:
     // Free function
     auto CXX_14CONSTEXPR del2 = delegate<void()>{}.set<testFkn>();
+    (void)del2;
 
     // Member function
     auto CXX_14CONSTEXPR del4 =
         delegate<void()>{}.set<TestMember, &TestMember::member>(tm);
+    (void)del4;
     auto CXX_14CONSTEXPR del6 =
         delegate<void()>{}.set<TestMember, &TestMember::cmember>(ctm);
+    (void)del6;
 
     // Functor
     auto CXX_14CONSTEXPR del8 = delegate<void()>{}.set(s_f);
+    (void)del8;
+
     auto CXX_14CONSTEXPR del10 = delegate<void()>{}.set(s_cf);
+    (void)del10;
 
     // MemFkn
     auto constexpr memFkn =
@@ -543,33 +550,48 @@ TEST(delegate, test_constexpr)
     auto constexpr memFkn2 =
         delegate<void()>::memFkn<TestMember, &TestMember::cmember>();
     auto CXX_14CONSTEXPR del12 = delegate<void()>{}.set(memFkn, s_f);
+    (void)del12;
+
     auto CXX_14CONSTEXPR del14 = delegate<void()>{}.set(memFkn2, s_cf);
+    (void)del14;
 
     // Make:
     // Free function
     auto constexpr del3 = delegate<void()>::make<testFkn>();
+    (void)del3;
 
     // Member function
     auto constexpr del5 =
         delegate<void()>::make<TestMember, &TestMember::member>(tm);
+    (void)del5;
+
     auto constexpr del7 =
         delegate<void()>::make<TestMember, &TestMember::cmember>(ctm);
+    (void)del7;
 
     // Functor
     auto constexpr del9 = delegate<void()>::make(s_f);
+    (void)del9;
     auto constexpr del11 = delegate<void()>::make(s_cf);
+    (void)del11;
 
     // MemFkn
     auto constexpr del13 = delegate<void()>::make(memFkn, s_f);
+    (void)del13;
     auto constexpr del15 = delegate<void()>::make(memFkn2, s_cf);
+    (void)del15;
 
     // Member function, short c++17 notation.
 #if __cplusplus >= 201703
     auto constexpr del16 = delegate<void()>{}.set<&TestMember::member>(tm);
+    (void)del16;
     auto constexpr del18 = delegate<void()>{}.set<&TestMember::cmember>(ctm);
+    (void)del18;
 
     auto constexpr del17 = delegate<void()>::make<&TestMember::member>(tm);
+    (void)del17;
     auto constexpr del19 = delegate<void()>::make<&TestMember::cmember>(ctm);
+    (void)del19;
 
     auto constexpr memFkn3 = delegate<void()>::memFkn<&TestMember::member>();
     (void)memFkn3;
@@ -743,7 +765,7 @@ TEST(delegate, testLambdaConstFunctionConst2)
     auto lambda = [](int x, int y) -> int { return x + y; };
     auto cb3 = delegate<int(int, int)>::make(lambda);
 
-    res = cb2(6, 5);
+    res = cb3(6, 5);
     assert(res == 11);
 }
 

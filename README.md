@@ -21,7 +21,7 @@ implementations, using only 2 pointers (free function pointer and void pointer).
 It avoids virtual dispatch internally. That result in small object code footprint and 
 allows the optimizer to see through part of the call. This also means it fulfills the requirements
 for being trivially_copyable, meaning it can safely be memcpy:ied between objects.
-See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp/types/is_trivially_copyable)
+See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp/types/is_trivially_copyable).
 
 
 ## Quick start.
@@ -175,7 +175,7 @@ For functors, the delegate expect the user to keep them alive.
         const TestF ct;
 
         del.set(t);
-        res = delcb(1); 
+        res = del(1); 
         // res is now 3.
 
         del.set(ct);
@@ -210,6 +210,29 @@ easy for the compiler to optimize compared to a fully static setup.
         del.set_fkn([](int x) -> int { return x + 7; });
         res = del(1);
         // res is now 8.
+    }
+
+For the runtime case there is no constructor template argument to give,
+So delegate supports passing in a compatible free function pointer. This
+will accept stateless lambdas also via function pointer conversion.
+There is no lifetime issue with stateless lambdas.
+
+    #include "delegate/delegate.hpp"
+
+    int testFkn(int x)
+    {
+       return x + 5;
+    }
+
+    int main()
+    {
+        delegate<int(int)> del{testFkn};
+        res = del(1); 
+        // res is now 6.
+
+		 auto del2 = delegate<int(int)>{ [](int x) -> int { return x + 6; } };
+        res = del2(1);
+        // res is now 7.
     }
 
 Except the set function, one can use 'make' static functions to build delegate
@@ -262,6 +285,10 @@ Another reason is that you can 'borrow' type information.
     auto del = delegate<int(int)>{};
     auto del2 = del.make<freeFkn>();
 
+For normal runtime variables there is no constructor template type to
+pass, so delegate do support passing in a runtime variable function pointer
+of the right signature. It also allows implicit conversion from stateless lambdas
+in this case.
 
 ### Alternative make_delegate free function.
 

@@ -8,12 +8,16 @@ clean:
 	rm delegate_test_11.out delegate_test_14.out delegate_test_17.out
 
 delegate_test_11.out: test/delegate_test.cpp include/delegate/delegate.hpp
-	g++ -std=c++11 -Wall $(INC_FLAGS) -o delegate_test_11.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
-	g++ -std=c++14 -Wall $(INC_FLAGS) -o delegate_test_14.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
-	g++ -std=c++17 -Wall $(INC_FLAGS) -o delegate_test_17.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
+	g++ -std=c++11 -Wall $(INC_FLAGS) -o delegate_test_11_g.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
+	g++ -std=c++14 -Wall $(INC_FLAGS) -o delegate_test_14_g.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
+	g++ -std=c++17 -Wall $(INC_FLAGS) -o delegate_test_17_g.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
+	clang++ -std=c++11 -Wall $(INC_FLAGS) -o delegate_test_11_c.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
+	clang++ -std=c++14 -Wall $(INC_FLAGS) -o delegate_test_14_c.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
+	clang++ -std=c++17 -Wall $(INC_FLAGS) -o delegate_test_17_c.out -Iinclude test/delegate_test.cpp $(LIB_FLAGS) -pthread
 
 run_test: delegate_test_11.out
-	./delegate_test_11.out && ./delegate_test_14.out && ./delegate_test_17.out
+	./delegate_test_11_g.out && ./delegate_test_14_g.out && ./delegate_test_17_g.out && 	./delegate_test_11_c.out && ./delegate_test_14_c.out && ./delegate_test_17_c.out
+
 
 .PHONY: format
 format:

@@ -389,7 +389,7 @@ class delegate<R_(Args...)>
 
     // Do not allow temporaries to be stored.
     template <class T>
-    constexpr delegate& set(T&&) = delete;
+    constexpr delegate& set(T&&) const = delete;
 
     DELEGATE_CXX14CONSTEXPR delegate& set(TargetFreeCB fkn) noexcept
     {
