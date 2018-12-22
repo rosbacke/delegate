@@ -93,10 +93,206 @@ nullReturnFunction()
 {
     return;
 }
+
 } // namespace details
 
 template <typename T>
 class delegate;
+
+/**
+ * Simple adapter class for holding member functions and
+ * allow them to be called similar to std::invoke.
+ *
+ * @param T Object type this member can be called on.
+ * @param cnst Force stored member function to be const.
+ * @param Signature The signature required to call this member function.
+ *
+ * Notes on the cnst arguments. If false, we require the member to be called
+ * only on non const objects. Normally we match only on non const member
+ * functions. When true we require member functions to be const, so they can be
+ * called on both non-const/const objects. To assign a const function to a
+ * mem_fkn which is false, use make_from_const. A separate function name is
+ * needed to avoid ambiguous overloads w.r.t. constness.
+ *
+ * Current idea: Give both T and constness separately to be part of the type.
+ * - Allow us to disambiguate const/non-const member functions when taking the
+ * address.
+ *
+ * Discarded idea: T can be const/non-const. If const is  not part of stored
+ * type, we can not later use constness to disambiguate taking the address.
+ * Still, constness of function is different from constness of object.
+ *
+ * ->
+ */
+template <class T, bool, typename Signature>
+class mem_fkn;
+
+template <class T, typename Signature>
+class mem_fkn_base;
+
+template <typename T, typename R_, typename... Args>
+class mem_fkn_base<T, R_(Args...)>
+{
+  protected:
+    using R = R_;
+    using Trampoline = R_ (*)(T*, Args...);
+
+    inline static constexpr R doNullCB(T* o, Args... args)
+    {
+        return details::nullReturnFunction<R>();
+    }
+
+    mem_fkn_base(Trampoline fkn) : fknPtr(fkn){};
+    mem_fkn_base() = default;
+
+    Trampoline fknPtr = doNullCB;
+
+  public:
+    constexpr bool null() const noexcept
+    {
+        return fknPtr == doNullCB;
+    }
+    // Return true if a function pointer is stored.
+    constexpr explicit operator bool() const noexcept
+    {
+        return !null();
+    }
+    static constexpr bool equal(const mem_fkn_base& lhs,
+                                const mem_fkn_base& rhs)
+    {
+        return lhs.fknPtr == rhs.fknPtr;
+    }
+    static constexpr bool less(const mem_fkn_base& lhs, const mem_fkn_base& rhs)
+    {
+        return (lhs.null() && !rhs.null()) || (lhs.fknPtr < rhs.fknPtr);
+    }
+};
+
+template <typename T, typename R_, typename... Args>
+class mem_fkn<T, false, R_(Args...)> : public mem_fkn_base<T, R_(Args...)>
+{
+    using R = R_;
+    using Base = class mem_fkn_base<T, R_(Args...)>;
+    using Trampoline = typename Base::Trampoline;
+    static constexpr const bool cnst = false;
+
+    mem_fkn(Trampoline fkn) : Base(fkn){};
+
+    // Adapter function for the member + object calling.
+    template <R (T::*memFkn)(Args...)>
+    inline static constexpr R doMemberCB(T* o, Args... args)
+    {
+        return (o->*memFkn)(args...);
+    }
+
+    // Adapter function for the member + object calling.
+    template <R (T::*memFkn)(Args...) const>
+    inline static constexpr R doMemberConstCB(T* o, Args... args)
+    {
+        return (static_cast<T const*>(o)->*memFkn)(args...);
+    }
+
+  public:
+    mem_fkn() = default;
+
+    template <typename U>
+    R invoke(U&& o, Args... args)
+    {
+        return Base::fknPtr(&o, args...);
+    }
+
+    template <R (T::*memFkn_)(Args... args)>
+    static constexpr mem_fkn make() noexcept
+    {
+        return mem_fkn{doMemberCB<memFkn_>};
+    }
+    template <R (T::*memFkn_)(Args... args) const>
+    static constexpr mem_fkn make_from_const() noexcept
+    {
+        return mem_fkn{&doMemberConstCB<memFkn_>};
+    }
+};
+
+template <typename T, typename R_, typename... Args>
+class mem_fkn<T, true, R_(Args...)> : public mem_fkn_base<T, R_(Args...)>
+{
+    using R = R_;
+    using Base = mem_fkn_base<T, R_(Args...)>;
+    using Trampoline = typename Base::Trampoline;
+    static constexpr const bool cnst = true;
+
+    mem_fkn(Trampoline fkn) : Base(fkn){};
+
+    // Adapter function for the member + object calling.
+    template <R (T::*memFkn)(Args...)>
+    inline static constexpr R doMemberCB(T* o, Args... args)
+    {
+        return (o->*memFkn)(args...);
+    }
+
+    // Adapter function for the member + object calling.
+    template <R (T::*memFkn)(Args...) const>
+    inline static constexpr R doMemberConstCB(T* o, Args... args)
+    {
+        return (static_cast<T const*>(o)->*memFkn)(args...);
+    }
+
+  public:
+    mem_fkn() = default;
+
+    R invoke(T const& o, Args... args)
+    {
+        return Base::fknPtr(const_cast<T*>(&o), args...);
+    }
+
+    template <R (T::*memFkn_)(Args... args) const>
+    static constexpr mem_fkn make() noexcept
+    {
+        return mem_fkn{&doMemberConstCB<memFkn_>};
+    }
+};
+
+template <typename T, bool cnst, typename S>
+bool
+operator==(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
+{
+    return lhs.equal(lhs, rhs);
+}
+
+template <typename T, bool cnst, typename S>
+bool
+operator!=(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <typename T, bool cnst, typename S>
+bool
+operator<(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
+{
+    return lhs.less(lhs, rhs);
+}
+
+template <typename T, bool cnst, typename S>
+bool
+operator<=(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
+{
+    return lhs.less(lhs, rhs) || lhs.equal(lhs, rhs);
+}
+
+template <typename T, bool cnst, typename S>
+bool
+operator>=(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
+{
+    return lhs.less(rhs, lhs) || lhs.equal(lhs, rhs);
+}
+
+template <typename T, bool cnst, typename S>
+bool
+operator>(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
+{
+    return rhs.less(rhs, lhs);
+}
 
 template <typename Del, bool cnst>
 class MemFkn

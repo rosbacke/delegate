@@ -880,3 +880,136 @@ TEST(oldtests, testrun)
 {
     testFreeFunctionWithPtr();
 }
+
+struct MCheck
+{
+    int member(int i)
+    {
+        return i + 1;
+    }
+    int cmember(int i) const
+    {
+        return i + 2;
+    }
+    int constcheck(int i)
+    {
+        return i + 1;
+    }
+    int constcheck(int i) const
+    {
+        return i + 2;
+    }
+};
+
+TEST(mem_fkn, develop)
+{
+    MCheck mc;
+    const MCheck cmc;
+
+    mem_fkn<MCheck, false, int(int)> mf;
+
+    mf = mf.make<&MCheck::member>();
+    EXPECT_EQ(mf.invoke(mc, 1), 2);
+
+    mf = mf.make_from_const<&MCheck::cmember>();
+    EXPECT_EQ(mf.invoke(mc, 1), 3);
+
+    mf = mf.make<&MCheck::member>();
+    // EXPECT_EQ(mf.invoke(cmc, 1), 2);
+
+    // Not ambiguous when taking address.
+    mf = mf.make<&MCheck::constcheck>();
+    EXPECT_EQ(mf.invoke(mc, 1), 2);
+
+    mem_fkn<MCheck, true, int(int)> cmf;
+
+    // cmf = cmf.make<&MemberCheck::member>();
+    cmf = cmf.make<&MCheck::cmember>();
+    EXPECT_EQ(cmf.invoke(mc, 1), 3);
+    EXPECT_EQ(cmf.invoke(cmc, 1), 3);
+
+    // Not ambiguous when taking address.
+    cmf = cmf.make<&MCheck::constcheck>();
+    EXPECT_EQ(cmf.invoke(mc, 1), 3);
+    EXPECT_EQ(cmf.invoke(cmc, 1), 3);
+}
+
+TEST(mem_fkn, value_based)
+{
+    mem_fkn<MCheck, false, int(int)> mf;
+    EXPECT_FALSE(mf);
+    EXPECT_TRUE(!mf);
+    EXPECT_TRUE(mf == mf);
+    EXPECT_FALSE(mf != mf);
+    EXPECT_FALSE(mf < mf);
+    EXPECT_TRUE(mf <= mf);
+    EXPECT_TRUE(mf >= mf);
+    EXPECT_FALSE(mf > mf);
+
+    mem_fkn<MCheck, false, int(int)> mf2 = mf2.make<&MCheck::member>();
+    EXPECT_FALSE(!mf2);
+    EXPECT_TRUE(mf2);
+
+    EXPECT_TRUE(mf != mf2);
+    EXPECT_FALSE(mf == mf2);
+    EXPECT_TRUE(mf < mf2);
+    EXPECT_TRUE(mf <= mf2);
+    EXPECT_FALSE(mf >= mf2);
+    EXPECT_FALSE(mf > mf2);
+
+    EXPECT_TRUE(mf2 != mf);
+    EXPECT_FALSE(mf2 == mf);
+    EXPECT_FALSE(mf2 <= mf);
+    EXPECT_FALSE(mf2 < mf);
+    EXPECT_TRUE(mf2 > mf);
+    EXPECT_TRUE(mf2 >= mf);
+
+    mem_fkn<MCheck, false, int(int)> mf3 = mf2.make<&MCheck::constcheck>();
+
+    EXPECT_TRUE(mf2 != mf3);
+    EXPECT_FALSE(mf2 == mf3);
+    EXPECT_FALSE(mf2 <= mf3 && mf2 >= mf3);
+    EXPECT_TRUE(mf2 <= mf3 || mf2 >= mf3);
+    EXPECT_FALSE(mf2 < mf3 && mf2 > mf3);
+    EXPECT_TRUE(mf2 < mf3 || mf2 > mf3);
+}
+
+TEST(mem_fkn, value_based_const)
+{
+    mem_fkn<MCheck, true, int(int)> mf;
+    EXPECT_FALSE(mf);
+    EXPECT_TRUE(!mf);
+    EXPECT_TRUE(mf == mf);
+    EXPECT_FALSE(mf != mf);
+    EXPECT_FALSE(mf < mf);
+    EXPECT_TRUE(mf <= mf);
+    EXPECT_TRUE(mf >= mf);
+    EXPECT_FALSE(mf > mf);
+
+    mem_fkn<MCheck, true, int(int)> mf2 = mf2.make<&MCheck::cmember>();
+    EXPECT_FALSE(!mf2);
+    EXPECT_TRUE(mf2);
+
+    EXPECT_TRUE(mf != mf2);
+    EXPECT_FALSE(mf == mf2);
+    EXPECT_TRUE(mf < mf2);
+    EXPECT_TRUE(mf <= mf2);
+    EXPECT_FALSE(mf >= mf2);
+    EXPECT_FALSE(mf > mf2);
+
+    EXPECT_TRUE(mf2 != mf);
+    EXPECT_FALSE(mf2 == mf);
+    EXPECT_FALSE(mf2 <= mf);
+    EXPECT_FALSE(mf2 < mf);
+    EXPECT_TRUE(mf2 > mf);
+    EXPECT_TRUE(mf2 >= mf);
+
+    mem_fkn<MCheck, true, int(int)> mf3 = mf2.make<&MCheck::constcheck>();
+
+    EXPECT_TRUE(mf2 != mf3);
+    EXPECT_FALSE(mf2 == mf3);
+    EXPECT_FALSE(mf2 <= mf3 && mf2 >= mf3);
+    EXPECT_TRUE(mf2 <= mf3 || mf2 >= mf3);
+    EXPECT_FALSE(mf2 < mf3 && mf2 > mf3);
+    EXPECT_TRUE(mf2 < mf3 || mf2 > mf3);
+}
