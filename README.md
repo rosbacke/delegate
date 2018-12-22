@@ -104,6 +104,11 @@ It does allow encapsulating a member function pointer and treat it as any other
 value type. It can be stored, compared and copied around. Could e.g. be set up
 in a std::map for lookup and later supplied an object to be called on.
 
+Update: The design of MemFkn is currently flawed. It require more type information to 
+make sure the object to call on is the correct type (not just constness...). 
+Currently it can be used to call a member on an object of a different type which is UB.
+The intention is to redesign this class to fix this. 
+
 ## Delegate examples
 
     #include "delegate/delegate.hpp"

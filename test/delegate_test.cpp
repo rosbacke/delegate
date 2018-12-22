@@ -1,4 +1,5 @@
 #include "delegate/delegate.hpp"
+#include <functional>
 
 #include <cassert>
 #include <cstdint>
@@ -488,6 +489,20 @@ TEST(delegate, MemFkn_short_member_intermediate_storage)
     res = del(1);
     EXPECT_EQ(res, 3);
 }
+
+TEST(delegate, can_be_called_by_invoke)
+{
+    MemberCheck mc;
+    const MemberCheck cmc;
+
+    auto del = delegate<int(int)>::make<&MemberCheck::member>(mc);
+    auto res = std::invoke(del, 1);
+    EXPECT_EQ(res, 2);
+
+    del.set<&MemberCheck::cmember>(cmc);
+    EXPECT_EQ(std::invoke(del, 1), 3);
+}
+
 #endif
 
 void

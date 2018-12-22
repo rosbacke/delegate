@@ -115,6 +115,21 @@ class MemFkn
         return lhs.trampoline == rhs.trampoline;
     }
 
+    constexpr bool equal(const MemFkn& rhs) const noexcept
+    {
+        return equal(*this, rhs);
+    }
+
+    // Helper Functor for passing into std functions etc.
+    struct Equal
+    {
+        constexpr bool operator()(const MemFkn& lhs, const MemFkn& rhs) const
+            noexcept
+        {
+            return equal(lhs, rhs);
+        }
+    };
+
     // Define a total order for purpose of sorting in maps etc.
     // Do not define operators since this is not a natural total order.
     // It will vary randomly depending on where symbols end up etc.
@@ -123,10 +138,30 @@ class MemFkn
         return (lhs.null() && !rhs.null()) || lhs.trampoline < rhs.trampoline;
     }
 
+    constexpr bool less(const MemFkn& rhs) const noexcept
+    {
+        return less(*this, rhs);
+    }
+
+    // Helper Functor for passing into std::map et.al.
+    struct Less
+    {
+        constexpr bool operator()(const MemFkn& lhs, const MemFkn& rhs) const
+            noexcept
+        {
+            return less(lhs, rhs);
+        }
+    };
+
     // Return true if a function pointer is stored.
     constexpr explicit operator bool() const noexcept
     {
         return !null();
+    }
+
+    DELEGATE_CXX14CONSTEXPR void clear() noexcept
+    {
+        trampoline = Del::doNullFkn;
     }
 
   private:
@@ -654,7 +689,7 @@ class delegate<R_(Args...)>
         return delegate{DM::trampoline, DM::castPtr(&obj)};
     }
 
-    // Temoraries not allowed.
+    // Temporaries not allowed.
     template <auto mFkn>
     static constexpr delegate
     make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&&) = delete;
