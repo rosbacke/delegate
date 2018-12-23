@@ -114,6 +114,8 @@ mem_fkn require more type information compared to delegate. In addition to call 
 require the type of the object to call on and a bool to signal if the functions stored
 is a const method.
 
+Detailed [API for mem_fkn](doc/mem_fkn.md).
+
 ## Delegate examples
 
     #include "delegate/delegate.hpp"
