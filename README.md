@@ -95,19 +95,24 @@ Example use case:
     
   * Be constexpr and exception friendly. As much as possible should be delared constexpr and noexcept. 
   
-## MemFkn
+## mem_fkn (Prev. MemFkn)
 
 A helper class to store a call to a member function without supplying an actual 
-object to call on. The only useful thing MemFkn can do is later to be an argument
-to a delegate together with an object. 
-It does allow encapsulating a member function pointer and treat it as any other 
-value type. It can be stored, compared and copied around. Could e.g. be set up
+object to call on. It is a stand-alone class that can encapsulate a member function.
+It has an 'invoke' member which accept an object and the stored member function is
+called on that object, similar to std::invoke.
+It can be stored, compared and copied around. Could e.g. be set up
 in a std::map for lookup and later supplied an object to be called on.
+mem_fkn uses a single free function pointer for storage and behaves as a standard value type.
+It could be useful on its own to avoid having to deal with member pointer syntax in user code.
 
-Update: The design of MemFkn is currently flawed. It require more type information to 
-make sure the object to call on is the correct type (not just constness...). 
-Currently it can be used to call a member on an object of a different type which is UB.
-The intention is to redesign this class to fix this. 
+The main intended use is as an argument to delegate. A mem_fkn and an object can be given to 
+the delegate class to tie an object to the member function and later the delegate
+can be called in the normal way. mem_fkn offers a way to delay the combination of
+the object and the member function name.
+mem_fkn require more type information compared to delegate. 
+In addition to call signature it require the type of the object to call on and a bool 
+to signal if the functions stored is a const method.
 
 ## Delegate examples
 

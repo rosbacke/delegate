@@ -94,6 +94,46 @@ nullReturnFunction()
     return;
 }
 
+template <typename T>
+class common;
+
+template <typename R, typename... Args>
+class common<R(Args...)>
+{
+  public:
+    union DataPtr {
+        using FknPtr = R (*)(Args...);
+
+        constexpr DataPtr() = default;
+        constexpr DataPtr(void* p) noexcept : v_ptr(p){};
+        constexpr DataPtr(FknPtr p) noexcept : fkn_ptr(p){};
+
+        void* v_ptr = nullptr;
+        FknPtr fkn_ptr;
+    };
+
+    using Trampoline = R (*)(DataPtr const&, Args...);
+
+    inline static constexpr R doNullCB(DataPtr const& o, Args... args)
+    {
+        return nullReturnFunction<R>();
+    }
+
+    // Adapter function for the member + object calling.
+    template <class T, R (T::*memFkn)(Args...)>
+    inline static constexpr R doMemberCB(DataPtr const& o, Args... args)
+    {
+        return (static_cast<T*>(o.v_ptr)->*memFkn)(args...);
+    }
+
+    // Adapter function for the member + object calling.
+    template <class T, R (T::*memFkn)(Args...) const>
+    inline static constexpr R doConstMemberCB(DataPtr const& o, Args... args)
+    {
+        return (static_cast<T const*>(o.v_ptr)->*memFkn)(args...);
+    }
+};
+
 } // namespace details
 
 template <typename T>
@@ -127,30 +167,37 @@ class delegate;
 template <class T, bool, typename Signature>
 class mem_fkn;
 
-template <class T, typename Signature>
+template <typename Signature>
 class mem_fkn_base;
 
-template <typename T, typename R_, typename... Args>
-class mem_fkn_base<T, R_(Args...)>
+template <typename R_, typename... Args>
+class mem_fkn_base<R_(Args...)>
 {
   protected:
     using R = R_;
-    using Trampoline = R_ (*)(T*, Args...);
-
-    inline static constexpr R doNullCB(T* o, Args... args)
-    {
-        return details::nullReturnFunction<R>();
-    }
+    using common = details::common<R(Args...)>;
+    using DataPtr = typename common::DataPtr;
+    using Trampoline = typename common::Trampoline;
 
     mem_fkn_base(Trampoline fkn) : fknPtr(fkn){};
     mem_fkn_base() = default;
 
-    Trampoline fknPtr = doNullCB;
+    Trampoline fknPtr = common::doNullCB;
+
+    void setPtr(Trampoline t)
+    {
+        fknPtr = t;
+    }
 
   public:
+    Trampoline ptr() const
+    {
+        return fknPtr;
+    }
+
     constexpr bool null() const noexcept
     {
-        return fknPtr == doNullCB;
+        return fknPtr == common::doNullCB;
     }
     // Return true if a function pointer is stored.
     constexpr explicit operator bool() const noexcept
@@ -169,28 +216,16 @@ class mem_fkn_base<T, R_(Args...)>
 };
 
 template <typename T, typename R_, typename... Args>
-class mem_fkn<T, false, R_(Args...)> : public mem_fkn_base<T, R_(Args...)>
+class mem_fkn<T, false, R_(Args...)> : public mem_fkn_base<R_(Args...)>
 {
     using R = R_;
-    using Base = class mem_fkn_base<T, R_(Args...)>;
-    using Trampoline = typename Base::Trampoline;
+    using Base = class mem_fkn_base<R_(Args...)>;
     static constexpr const bool cnst = false;
+    using common = details::common<R(Args...)>;
+    using DataPtr = typename common::DataPtr;
+    using Trampoline = typename common::Trampoline;
 
     mem_fkn(Trampoline fkn) : Base(fkn){};
-
-    // Adapter function for the member + object calling.
-    template <R (T::*memFkn)(Args...)>
-    inline static constexpr R doMemberCB(T* o, Args... args)
-    {
-        return (o->*memFkn)(args...);
-    }
-
-    // Adapter function for the member + object calling.
-    template <R (T::*memFkn)(Args...) const>
-    inline static constexpr R doMemberConstCB(T* o, Args... args)
-    {
-        return (static_cast<T const*>(o)->*memFkn)(args...);
-    }
 
   public:
     mem_fkn() = default;
@@ -198,44 +233,43 @@ class mem_fkn<T, false, R_(Args...)> : public mem_fkn_base<T, R_(Args...)>
     template <typename U>
     R invoke(U&& o, Args... args)
     {
-        return Base::fknPtr(&o, args...);
+        return Base::fknPtr(DataPtr{static_cast<void*>(&o)}, args...);
     }
 
     template <R (T::*memFkn_)(Args... args)>
+    DELEGATE_CXX14CONSTEXPR mem_fkn& set() noexcept
+    {
+        Base::setPtr(&common::template doMemberCB<T, memFkn_>);
+        return *this;
+    }
+    template <R (T::*memFkn_)(Args... args) const>
+    DELEGATE_CXX14CONSTEXPR mem_fkn& set_from_const() noexcept
+    {
+        Base::fknPtr = &common::template doConstMemberCB<T, memFkn_>;
+        return *this;
+    }
+    template <R (T::*memFkn_)(Args... args)>
     static constexpr mem_fkn make() noexcept
     {
-        return mem_fkn{doMemberCB<memFkn_>};
+        return mem_fkn{&common::template doMemberCB<T, memFkn_>};
     }
     template <R (T::*memFkn_)(Args... args) const>
     static constexpr mem_fkn make_from_const() noexcept
     {
-        return mem_fkn{&doMemberConstCB<memFkn_>};
+        return mem_fkn{&common::template doConstMemberCB<T, memFkn_>};
     }
 };
 
 template <typename T, typename R_, typename... Args>
-class mem_fkn<T, true, R_(Args...)> : public mem_fkn_base<T, R_(Args...)>
+class mem_fkn<T, true, R_(Args...)> : public mem_fkn_base<R_(Args...)>
 {
     using R = R_;
-    using Base = mem_fkn_base<T, R_(Args...)>;
-    using Trampoline = typename Base::Trampoline;
+    using Base = mem_fkn_base<R_(Args...)>;
     static constexpr const bool cnst = true;
+    using common = details::common<R(Args...)>;
+    using Trampoline = typename common::Trampoline;
 
     mem_fkn(Trampoline fkn) : Base(fkn){};
-
-    // Adapter function for the member + object calling.
-    template <R (T::*memFkn)(Args...)>
-    inline static constexpr R doMemberCB(T* o, Args... args)
-    {
-        return (o->*memFkn)(args...);
-    }
-
-    // Adapter function for the member + object calling.
-    template <R (T::*memFkn)(Args...) const>
-    inline static constexpr R doMemberConstCB(T* o, Args... args)
-    {
-        return (static_cast<T const*>(o)->*memFkn)(args...);
-    }
 
   public:
     mem_fkn() = default;
@@ -248,7 +282,13 @@ class mem_fkn<T, true, R_(Args...)> : public mem_fkn_base<T, R_(Args...)>
     template <R (T::*memFkn_)(Args... args) const>
     static constexpr mem_fkn make() noexcept
     {
-        return mem_fkn{&doMemberConstCB<memFkn_>};
+        return mem_fkn{&common::template doConstMemberCB<T, memFkn_>};
+    }
+    template <R (T::*memFkn_)(Args... args) const>
+    DELEGATE_CXX14CONSTEXPR mem_fkn& set() noexcept
+    {
+        Base::fknPtr = &common::template doConstMemberCB<T, memFkn_>;
+        return *this;
     }
 };
 
@@ -294,77 +334,6 @@ operator>(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
     return rhs.less(rhs, lhs);
 }
 
-template <typename Del, bool cnst>
-class MemFkn
-{
-  public:
-    explicit constexpr MemFkn() = default;
-    explicit constexpr MemFkn(typename Del::Trampoline f) : trampoline(f) {}
-
-    constexpr bool null() const noexcept
-    {
-        return trampoline == Del::doNullFkn;
-    }
-
-    static constexpr bool equal(const MemFkn& lhs, const MemFkn& rhs) noexcept
-    {
-        return lhs.trampoline == rhs.trampoline;
-    }
-
-    constexpr bool equal(const MemFkn& rhs) const noexcept
-    {
-        return equal(*this, rhs);
-    }
-
-    // Helper Functor for passing into std functions etc.
-    struct Equal
-    {
-        constexpr bool operator()(const MemFkn& lhs, const MemFkn& rhs) const
-            noexcept
-        {
-            return equal(lhs, rhs);
-        }
-    };
-
-    // Define a total order for purpose of sorting in maps etc.
-    // Do not define operators since this is not a natural total order.
-    // It will vary randomly depending on where symbols end up etc.
-    static constexpr bool less(const MemFkn& lhs, const MemFkn& rhs) noexcept
-    {
-        return (lhs.null() && !rhs.null()) || lhs.trampoline < rhs.trampoline;
-    }
-
-    constexpr bool less(const MemFkn& rhs) const noexcept
-    {
-        return less(*this, rhs);
-    }
-
-    // Helper Functor for passing into std::map et.al.
-    struct Less
-    {
-        constexpr bool operator()(const MemFkn& lhs, const MemFkn& rhs) const
-            noexcept
-        {
-            return less(lhs, rhs);
-        }
-    };
-
-    // Return true if a function pointer is stored.
-    constexpr explicit operator bool() const noexcept
-    {
-        return !null();
-    }
-
-    DELEGATE_CXX14CONSTEXPR void clear() noexcept
-    {
-        trampoline = Del::doNullFkn;
-    }
-
-  private:
-    friend Del;
-    typename Del::Trampoline trampoline = Del::doNullFkn;
-};
-
 /**
  * Class for storing the callable object
  * Stores a pointer to an adapter function and a void* pointer to the
@@ -377,29 +346,14 @@ template <typename R_, typename... Args>
 class delegate<R_(Args...)>
 {
     using R = R_;
-    friend class MemFkn<delegate, false>;
-    friend class MemFkn<delegate, true>;
+    using common = details::common<R(Args...)>;
+    using DataPtr = typename common::DataPtr;
 
     // Signature presented to the user when calling the callback.
     using TargetFreeCB = R (*)(Args...);
 
-    union DataPtr {
-        constexpr DataPtr() = default;
-        constexpr DataPtr(void* p) noexcept : v_ptr(p){};
-        constexpr DataPtr(TargetFreeCB p) noexcept : fkn_ptr(p){};
-
-        void* v_ptr = nullptr;
-        TargetFreeCB fkn_ptr;
-    };
-
     // Type of the function pointer for the trampoline functions.
-    using Trampoline = R (*)(DataPtr const&, Args...);
-
-    // Adaptor function for when the delegate is expected to be a nullptr.
-    inline static R doNullFkn(DataPtr const& v, Args... args)
-    {
-        return details::nullReturnFunction<R>();
-    }
+    using Trampoline = typename common::Trampoline;
 
     // Adaptor function for the case where void* is not forwarded
     // to the caller. (Just a normal function pointer.)
@@ -407,22 +361,6 @@ class delegate<R_(Args...)>
     inline static R doFreeCB(DataPtr const& v, Args... args)
     {
         return freeFkn(args...);
-    }
-
-    // Adapter function for the member + object calling.
-    template <class T, R (T::*memFkn)(Args...)>
-    inline static R doMemberCB(DataPtr const& o, Args... args)
-    {
-        T* obj = static_cast<T*>(o.v_ptr);
-        return (((*obj).*(memFkn))(args...));
-    }
-
-    // Adapter function for the member + object calling.
-    template <class T, R (T::*memFkn)(Args...) const>
-    inline static R doConstMemberCB(DataPtr const& o, Args... args)
-    {
-        T const* obj = static_cast<T const*>(o.v_ptr);
-        return (((*obj).*(memFkn))(args...));
     }
 
     // Adapter function for when the stored object is a pointer to a
@@ -473,7 +411,8 @@ class delegate<R_(Args...)>
     // Do note it is less easy to optimize compared to static function setup.
     // Handle nullptr / 0 arguments as well.
     constexpr delegate(TargetFreeCB fkn) noexcept
-        : m_cb(fkn == nullptr ? &doNullFkn : &doRuntimeFkn), m_ptr(fkn){};
+        : m_cb(fkn == nullptr ? &common::doNullCB : &doRuntimeFkn),
+          m_ptr(fkn){};
 
     ~delegate() = default;
 
@@ -486,7 +425,7 @@ class delegate<R_(Args...)>
 
     constexpr bool null() const noexcept
     {
-        return m_cb == doNullFkn;
+        return m_cb == &common::doNullCB;
     }
 
     static constexpr bool equal(const delegate& lhs,
@@ -554,7 +493,7 @@ class delegate<R_(Args...)>
 
     DELEGATE_CXX14CONSTEXPR void clear() noexcept
     {
-        m_cb = doNullFkn;
+        m_cb = common::doNullCB;
         m_ptr.v_ptr = nullptr;
     }
 
@@ -576,7 +515,7 @@ class delegate<R_(Args...)>
     template <class T, R (T::*memFkn)(Args... args)>
     DELEGATE_CXX14CONSTEXPR delegate& set(T& tr) noexcept
     {
-        m_cb = &doMemberCB<T, memFkn>;
+        m_cb = &common::template doMemberCB<T, memFkn>;
         m_ptr.v_ptr = static_cast<void*>(&tr);
         return *this;
     }
@@ -584,7 +523,7 @@ class delegate<R_(Args...)>
     template <class T, R (T::*memFkn)(Args... args) const>
     DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr) noexcept
     {
-        m_cb = &doConstMemberCB<T, memFkn>;
+        m_cb = &common::template doConstMemberCB<T, memFkn>;
         m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
         return *this;
     }
@@ -651,13 +590,14 @@ class delegate<R_(Args...)>
     template <class T, R (T::*memFkn)(Args... args)>
     static constexpr delegate make(T& o) noexcept
     {
-        return delegate{&doMemberCB<T, memFkn>, static_cast<void*>(&o)};
+        return delegate{&common::template doMemberCB<T, memFkn>,
+                        static_cast<void*>(&o)};
     }
 
     template <class T, R (T::*memFkn)(Args... args) const>
     static constexpr delegate make(const T& o) noexcept
     {
-        return delegate{&doConstMemberCB<T, memFkn>,
+        return delegate{&common::template doConstMemberCB<T, memFkn>,
                         const_cast<void*>(static_cast<const void*>(&o))};
     }
 
@@ -738,81 +678,65 @@ class delegate<R_(Args...)>
     }
 
     /**
-     * Create a MemFkn object for storing member function before connecting
-     * them with an object to make them callable.
-     * Keeps track of constness of the member function and have richer type
-     * information compared to the delegate.
-     */
-    template <class T, R (T::*memFkn_)(Args... args) const>
-    static constexpr MemFkn<delegate, true> memFkn() noexcept
-    {
-        return MemFkn<delegate, true>{&doConstMemberCB<T, memFkn_>};
-    }
-
-    template <class T, R (T::*memFkn_)(Args... args)>
-    static constexpr MemFkn<delegate, false> memFkn() noexcept
-    {
-        return MemFkn<delegate, false>{&doMemberCB<T, memFkn_>};
-    }
-
-    /**
      * Combine a MemFkn with an object to set this delegate.
      */
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, false> f,
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)> f,
                                           T& o) noexcept
     {
-        m_cb = f.trampoline;
+        m_cb = f.ptr();
         m_ptr = static_cast<void*>(&o);
         return *this;
     }
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f,
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)> f,
+                                          T const& o) = delete;
+
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> f,
                                           T const& o) noexcept
     {
-        m_cb = f.trampoline;
+        m_cb = f.ptr();
         m_ptr = const_cast<void*>(static_cast<const void*>(&o));
         return *this;
     }
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f,
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> f,
                                           T& o) noexcept
     {
         return set(f, static_cast<T const&>(o));
     }
 
-    template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, true> f,
-                                          T&& o) = delete;
-    template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(MemFkn<delegate, false> f,
+    template <class T, bool cnst>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, cnst, R(Args...)> f,
                                           T&& o) = delete;
 
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, false> f, T& o) noexcept
+    static constexpr delegate make(mem_fkn<T, false, R(Args...)> f,
+                                   T& o) noexcept
     {
-        return delegate{f.trampoline, static_cast<void*>(&o)};
+        return delegate{f.ptr(), static_cast<void*>(&o)};
     }
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, false>, T const&) = delete;
+    static constexpr delegate make(mem_fkn<T, false, R(Args...)>,
+                                   T const&) = delete;
 
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, true> f,
+    static constexpr delegate make(mem_fkn<T, true, R(Args...)> f,
                                    T const& o) noexcept
     {
-        return delegate{f.trampoline,
+        return delegate{f.ptr(),
                         const_cast<void*>(static_cast<const void*>(&o))};
     }
     template <class T>
-    static constexpr delegate make(MemFkn<delegate, true> f, T& o) noexcept
+    static constexpr delegate make(mem_fkn<T, true, R(Args...)> f,
+                                   T& o) noexcept
     {
-        return delegate{f.trampoline, static_cast<void*>(&o)};
+        return delegate{f.ptr(), static_cast<void*>(&o)};
     }
 
-    template <class T>
-    static constexpr delegate make(MemFkn<delegate, false>, T&&) = delete;
-    template <class T>
-    static constexpr delegate make(MemFkn<delegate, true>, T&&) = delete;
+    template <class T, bool cnst>
+    static constexpr delegate make(mem_fkn<T, cnst, R(Args...)>, T&&) = delete;
 
     // Helper struct to deduce member function types and const.
     template <typename T, T>
@@ -823,7 +747,8 @@ class delegate<R_(Args...)>
     {
         using ObjType = T;
         static constexpr bool cnst = false;
-        static constexpr Trampoline trampoline = &doMemberCB<ObjType, mf>;
+        static constexpr Trampoline trampoline =
+            &common::template doMemberCB<ObjType, mf>;
         static constexpr void* castPtr(ObjType* obj) noexcept
         {
             return static_cast<void*>(obj);
@@ -834,7 +759,8 @@ class delegate<R_(Args...)>
     {
         using ObjType = T;
         static constexpr bool cnst = true;
-        static constexpr Trampoline trampoline = &doConstMemberCB<ObjType, mf>;
+        static constexpr Trampoline trampoline =
+            &common::template doConstMemberCB<ObjType, mf>;
         static constexpr void* castPtr(ObjType const* obj) noexcept
         {
             return const_cast<void*>(static_cast<const void*>(obj));
@@ -890,13 +816,6 @@ class delegate<R_(Args...)>
     static constexpr delegate
     make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&&) = delete;
 
-    // MemFkn construction.
-    template <auto mFkn>
-    static constexpr auto memFkn() noexcept
-    {
-        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
-        return MemFkn<delegate, DM::cnst>{DM::trampoline};
-    }
 #endif
 
   private:
@@ -916,7 +835,7 @@ class delegate<R_(Args...)>
     {
     }
 
-    Trampoline m_cb = &doNullFkn;
+    Trampoline m_cb = &common::doNullCB;
     DataPtr m_ptr;
 };
 
@@ -968,24 +887,6 @@ operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs) noexcept
 // No ordering operators ( operator< etc) defined. This delegate
 // represent several classes of pointers and is not a naturally
 // ordered type. Use members less, Less for explicit ordering.
-
-// Delete ordering operators.
-template <typename R, typename... Args>
-constexpr bool
-operator<(const delegate<R(Args...)>& lhs,
-          const delegate<R(Args...)>& rhs) = delete;
-template <typename R, typename... Args>
-constexpr bool
-operator>(const delegate<R(Args...)>& lhs,
-          const delegate<R(Args...)>& rhs) = delete;
-template <typename R, typename... Args>
-constexpr bool
-operator<=(const delegate<R(Args...)>& lhs,
-           const delegate<R(Args...)>& rhs) = delete;
-template <typename R, typename... Args>
-constexpr bool
-operator>=(const delegate<R(Args...)>& lhs,
-           const delegate<R(Args...)>& rhs) = delete;
 
 /**
  * Helper macro to create a delegate for calling a member function.

@@ -383,8 +383,9 @@ TEST(delegate, MemFkn_member_intermediate_storage)
     const MemberCheck cmc;
 
     delegate<int(int)> del;
-    MemFkn<decltype(del), false> memberFkn{
-        delegate<int(int)>::memFkn<MemberCheck, &MemberCheck::member>()};
+
+    mem_fkn<MemberCheck, false, int(int)> memberFkn;
+    memberFkn.set<&MemberCheck::member>();
 
     // Must not compile. Do not want to deduce non const member fkn with true
     // cnst.
@@ -407,8 +408,8 @@ TEST(delegate, MemFkn_member_intermediate_storage)
     // del = delegate<int(int)>::make(memberFkn, cmc);
     // del = delegate<int(int)>::make(memberFkn, MemberCheck{});
 
-    MemFkn<decltype(del), true> cmemberFkn{
-        delegate<int(int)>::memFkn<MemberCheck, &MemberCheck::cmember>()};
+    auto cmemberFkn =
+        mem_fkn<MemberCheck, true, int(int)>::make<&MemberCheck::cmember>();
     del.set(cmemberFkn, mc);
     res = del(1);
     EXPECT_EQ(res, 3);
@@ -431,6 +432,7 @@ TEST(delegate, MemFkn_member_intermediate_storage)
     // del.set(cmemberFkn, MemberCheck{});
     // del = delegate<int(int)>::make(cmemberFkn, MemberCheck{});
 
+#if 0
     // Make sure convenience notation works.
     auto memberFkn3 = del.memFkn<MemberCheck, &MemberCheck::member>();
     del.set(memberFkn3, mc);
@@ -441,6 +443,7 @@ TEST(delegate, MemFkn_member_intermediate_storage)
     del.set(memberFkn4, cmc);
     res = del(1);
     EXPECT_EQ(res, 3);
+#endif
 }
 
 #if __cplusplus >= 201703
@@ -452,8 +455,8 @@ TEST(delegate, MemFkn_short_member_intermediate_storage)
     const MemberCheck cmc;
 
     delegate<int(int)> del;
-    MemFkn<decltype(del), false> memberFkn{
-        delegate<int(int)>::memFkn<&MemberCheck::member>()};
+    mem_fkn<MemberCheck, false, int(int)> memberFkn;
+    memberFkn.set<&MemberCheck::member>();
 
     // Must not compile. Do not want to deduce non const member fkn with true
     // cnst.
@@ -470,14 +473,20 @@ TEST(delegate, MemFkn_short_member_intermediate_storage)
     res = del(1);
     EXPECT_EQ(res, 2);
 
-    MemFkn<decltype(del), true> cmemberFkn{
-        delegate<int(int)>::memFkn<&MemberCheck::cmember>()};
+    mem_fkn<MemberCheck, true, int(int)> cmemberFkn;
+    cmemberFkn.set<&MemberCheck::cmember>();
+
     del.set(cmemberFkn, mc);
+    res = del(1);
+    EXPECT_EQ(res, 3);
+
+    del.set(cmemberFkn, cmc);
     res = del(1);
     EXPECT_EQ(res, 3);
 
     del.clear();
 
+#if 0
     // Make sure convenience notation works.
     auto memberFkn3 = del.memFkn<&MemberCheck::member>();
     del.set(memberFkn3, mc);
@@ -488,6 +497,7 @@ TEST(delegate, MemFkn_short_member_intermediate_storage)
     del.set(memberFkn4, cmc);
     res = del(1);
     EXPECT_EQ(res, 3);
+#endif
 }
 
 TEST(delegate, can_be_called_by_invoke)
@@ -559,6 +569,7 @@ TEST(delegate, test_constexpr)
     auto CXX_14CONSTEXPR del10 = delegate<void()>{}.set(s_cf);
     (void)del10;
 
+#if 0
     // MemFkn
     auto constexpr memFkn =
         delegate<void()>::memFkn<TestMember, &TestMember::member>();
@@ -569,6 +580,7 @@ TEST(delegate, test_constexpr)
 
     auto CXX_14CONSTEXPR del14 = delegate<void()>{}.set(memFkn2, s_cf);
     (void)del14;
+#endif
 
     // Make:
     // Free function
@@ -590,11 +602,13 @@ TEST(delegate, test_constexpr)
     auto constexpr del11 = delegate<void()>::make(s_cf);
     (void)del11;
 
+#if 0
     // MemFkn
     auto constexpr del13 = delegate<void()>::make(memFkn, s_f);
     (void)del13;
     auto constexpr del15 = delegate<void()>::make(memFkn2, s_cf);
     (void)del15;
+#endif
 
     // Member function, short c++17 notation.
 #if __cplusplus >= 201703
@@ -608,10 +622,13 @@ TEST(delegate, test_constexpr)
     auto constexpr del19 = delegate<void()>::make<&TestMember::cmember>(ctm);
     (void)del19;
 
+#if 0
     auto constexpr memFkn3 = delegate<void()>::memFkn<&TestMember::member>();
     (void)memFkn3;
     auto constexpr memFkn4 = delegate<void()>::memFkn<&TestMember::cmember>();
     (void)memFkn4;
+#endif
+
 #endif
 }
 
