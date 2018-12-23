@@ -101,8 +101,8 @@ template <typename R, typename... Args>
 class common<R(Args...)>
 {
   public:
+    using FknPtr = R (*)(Args...);
     union DataPtr {
-        using FknPtr = R (*)(Args...);
 
         constexpr DataPtr() = default;
         constexpr DataPtr(void* p) noexcept : v_ptr(p){};
@@ -131,6 +131,30 @@ class common<R(Args...)>
     inline static constexpr R doConstMemberCB(DataPtr const& o, Args... args)
     {
         return (static_cast<T const*>(o.v_ptr)->*memFkn)(args...);
+    }
+
+    inline static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
+    {
+        FknPtr fkn = o_arg.fkn_ptr;
+        return fkn(args...);
+    }
+
+    static constexpr bool equal(Trampoline fkn, const DataPtr& lhs,
+                                const DataPtr& rhs) noexcept
+    {
+        // Ugly, but the m_ptr part should be optimized away on normal
+        // platforms.
+        return (fkn == doRuntimeFkn ? (lhs.fkn_ptr == rhs.fkn_ptr)
+                                    : (lhs.v_ptr == rhs.v_ptr));
+    }
+
+    static constexpr bool less(Trampoline fkn, const DataPtr& lhs,
+                               const DataPtr& rhs) noexcept
+    {
+        // Ugly, but the m_ptr part should be optimized away on normal
+        // platforms.
+        return fkn == doRuntimeFkn ? (lhs.fkn_ptr < rhs.fkn_ptr)
+                                   : (lhs.v_ptr < rhs.v_ptr);
     }
 };
 
@@ -260,12 +284,10 @@ class mem_fkn<T, false, R_(Args...)> : public mem_fkn_base<R_(Args...)>
     }
 };
 
-template <typename T, typename R_, typename... Args>
-class mem_fkn<T, true, R_(Args...)> : public mem_fkn_base<R_(Args...)>
+template <typename T, typename R, typename... Args>
+class mem_fkn<T, true, R(Args...)> : public mem_fkn_base<R(Args...)>
 {
-    using R = R_;
-    using Base = mem_fkn_base<R_(Args...)>;
-    static constexpr const bool cnst = true;
+    using Base = mem_fkn_base<R(Args...)>;
     using common = details::common<R(Args...)>;
     using Trampoline = typename common::Trampoline;
 
@@ -342,10 +364,9 @@ operator>(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
  * @param R type of the return value from calling the callback.
  * @param Args Argument list to the function when calling the callback.
  */
-template <typename R_, typename... Args>
-class delegate<R_(Args...)>
+template <typename R, typename... Args>
+class delegate<R(Args...)>
 {
-    using R = R_;
     using common = details::common<R(Args...)>;
     using DataPtr = typename common::DataPtr;
 
@@ -379,12 +400,6 @@ class delegate<R_(Args...)>
         return (*obj)(args...);
     }
 
-    inline static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
-    {
-        TargetFreeCB fkn = o_arg.fkn_ptr;
-        return fkn(args...);
-    }
-
     // Adapter function for the free function with extra first arg
     // in the called function, set at delegate construction.
     template <class T, R(freeFkn)(T&, Args...)>
@@ -411,7 +426,7 @@ class delegate<R_(Args...)>
     // Do note it is less easy to optimize compared to static function setup.
     // Handle nullptr / 0 arguments as well.
     constexpr delegate(TargetFreeCB fkn) noexcept
-        : m_cb(fkn == nullptr ? &common::doNullCB : &doRuntimeFkn),
+        : m_cb(fkn == nullptr ? &common::doNullCB : &common::doRuntimeFkn),
           m_ptr(fkn){};
 
     ~delegate() = default;
@@ -431,17 +446,8 @@ class delegate<R_(Args...)>
     static constexpr bool equal(const delegate& lhs,
                                 const delegate& rhs) noexcept
     {
-        // Ugly, but the m_ptr part should be optimized away on normal
-        // platforms.
         return lhs.m_cb == rhs.m_cb &&
-               (lhs.m_cb == doRuntimeFkn
-                    ? (lhs.m_ptr.fkn_ptr == rhs.m_ptr.fkn_ptr)
-                    : (lhs.m_ptr.v_ptr == rhs.m_ptr.v_ptr));
-    }
-
-    constexpr bool equal(const delegate& rhs) const noexcept
-    {
-        return equal(*this, rhs);
+               common::equal(lhs.m_cb, lhs.m_ptr, rhs.m_ptr);
     }
 
     // Helper Functor for passing into std functions etc.
@@ -465,14 +471,7 @@ class delegate<R_(Args...)>
         return (lhs.null() && !rhs.null()) //
                || lhs.m_cb < rhs.m_cb      //
                || (lhs.m_cb == rhs.m_cb &&
-                   (lhs.m_cb == doRuntimeFkn
-                        ? (lhs.m_ptr.fkn_ptr < rhs.m_ptr.fkn_ptr)
-                        : (lhs.m_ptr.v_ptr < rhs.m_ptr.v_ptr)));
-    }
-
-    constexpr bool less(const delegate& rhs) const noexcept
-    {
-        return less(*this, rhs);
+                   common::less(lhs.m_cb, lhs.m_ptr, rhs.m_ptr));
     }
 
     // Helper Functor for passing into std::map et.al.
@@ -563,7 +562,7 @@ class delegate<R_(Args...)>
 
     DELEGATE_CXX14CONSTEXPR delegate& set(TargetFreeCB fkn) noexcept
     {
-        m_cb = &doRuntimeFkn;
+        m_cb = &common::doRuntimeFkn;
         m_ptr.fkn_ptr = fkn;
         return *this;
     }
@@ -623,12 +622,12 @@ class delegate<R_(Args...)>
 
     static constexpr delegate make(TargetFreeCB fkn) noexcept
     {
-        return delegate{&doRuntimeFkn, fkn};
+        return delegate{&common::doRuntimeFkn, fkn};
     }
 
     static constexpr delegate make_fkn(TargetFreeCB fkn) noexcept
     {
-        return delegate{&doRuntimeFkn, fkn};
+        return delegate{&common::doRuntimeFkn, fkn};
     }
 
     /**

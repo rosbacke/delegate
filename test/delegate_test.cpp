@@ -844,7 +844,7 @@ TEST(delegate, can_store_in_a_set)
     auto del = Del::make<freeFkn>();
     auto del2 = Del::make<freeFkn2>();
     EXPECT_NE(del, del2);
-    EXPECT_NE(del.less(del2), del2.less(del));
+    EXPECT_NE(del.less(del, del2), del2.less(del2, del));
 
     std::set<Del, Del::Less> testSet;
     testSet.insert(Del::make<freeFkn>());
