@@ -276,7 +276,7 @@ class mem_fkn<T, false, R(Args...)> : public mem_fkn_base<R(Args...)>
     using DataPtr = typename common::DataPtr;
     using Trampoline = typename common::Trampoline;
 
-    constexpr mem_fkn(Trampoline fkn) : mem_fkn_base<R(Args...)>(fkn) {};
+    constexpr mem_fkn(Trampoline fkn) : mem_fkn_base<R(Args...)>(fkn){};
 
   public:
     constexpr mem_fkn() = default;
@@ -599,19 +599,19 @@ class delegate<R(Args...)>
      * Combine a MemFkn with an object to set this delegate.
      */
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)>const& f,
-                                          T& o) noexcept
+    DELEGATE_CXX14CONSTEXPR delegate&
+    set(mem_fkn<T, false, R(Args...)> const& f, T& o) noexcept
     {
         m_cb = f.ptr();
         m_ptr = static_cast<void*>(&o);
         return *this;
     }
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)>const& f,
-                                          T const& o) = delete;
+    DELEGATE_CXX14CONSTEXPR delegate&
+    set(mem_fkn<T, false, R(Args...)> const& f, T const& o) = delete;
 
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)>const& f,
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> const& f,
                                           T const& o) noexcept
     {
         m_cb = f.ptr();
@@ -619,17 +619,17 @@ class delegate<R(Args...)>
         return *this;
     }
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)>const& f,
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> const& f,
                                           T& o) noexcept
     {
         return set(f, static_cast<T const&>(o));
     }
 
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)>const& f,
-                                          T&& o) = delete;
+    DELEGATE_CXX14CONSTEXPR delegate&
+    set(mem_fkn<T, false, R(Args...)> const& f, T&& o) = delete;
     template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)>const& f,
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> const& f,
                                           T&& o) = delete;
 
     // C++17 allow template<auto> for non type template arguments.
