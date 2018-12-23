@@ -318,3 +318,37 @@ the name. Hence make delegate would need to take both. E.g.
 Omitting the signature could work, but would be ambiguous as soon as the function is overloaded, severly affecting maintainability.
 This will not offer extra functionality over using the 'make' functions
 so there is currently no effort in supporting this.
+
+## Do not take address of things in std.
+
+In C and traditional C++, function pointers and taking function addresses 
+are normal operation. Do note it can affect maintainability of your code.
+In particular, it is not allowed to to take the address of functions
+(member/free functions) in std. The standard only allow calling, not 
+taking the address of callables in std. 
+It allows the implementation to change a free function
+into e.g. a functor in a compatible way.
+
+In general, taking the address will tie down your implementation to the
+current presented interface. It will also prevent adding default arguments.
+
+So, when starting to pass around pointers to callable things, keep this in mind.
+It works, it will continue to work but do plan for future maintenance.
+
+From a technical side, using the template method used here, we do not actually
+take the address. It wraps the supplied call into a free function and stores an address
+to that. Hence we take an address of a user defined free function.
+Still, when the standard changes a free function into a functor you will still
+have the same issue. Only now, the template pattern matching fails instead of
+the compiler failing to find the right function.
+To get scared, see [Titus Winters talk](https://www.youtube.com/watch?v=BWvSSsKCiAw)
+on what can go wrong.
+
+Delegate does require you to specify signature before accepting a function name
+so the worst problems becoming ambiguous when adding new functions should
+be mitigated.
+
+So normal engineering practices is still valid. Decide on what you consider
+foreign code, put adapters on it so you have a single point to change when
+it changes. Decide what you consider stable/key interfaces in your code and let that
+be used more freely.
