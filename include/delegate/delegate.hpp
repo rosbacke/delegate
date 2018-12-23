@@ -12,7 +12,7 @@
 #include <cstdint> // uintptr_t
 
 /**
- * Simple storage of a callable object for functors, free and member functions.
+ * Storage of a callable object for functors, free and member functions.
  *
  * Design intent is to do part of what std::function do but
  * without heap allocation, virtual function call and with minimal
@@ -156,6 +156,35 @@ class common<R(Args...)>
         return fkn == doRuntimeFkn ? (lhs.fkn_ptr < rhs.fkn_ptr)
                                    : (lhs.v_ptr < rhs.v_ptr);
     }
+
+    // Helper struct to deduce member function types and const.
+    template <typename T, T>
+    struct DeduceMemberType;
+
+    template <typename T, R (T::*mf)(Args...)>
+    struct DeduceMemberType<R (T::*)(Args...), mf>
+    {
+        using ObjType = T;
+        static constexpr bool cnst = false;
+        static constexpr Trampoline trampoline =
+            &common::template doMemberCB<ObjType, mf>;
+        static constexpr void* castPtr(ObjType* obj) noexcept
+        {
+            return static_cast<void*>(obj);
+        }
+    };
+    template <typename T, R (T::*mf)(Args...) const>
+    struct DeduceMemberType<R (T::*)(Args...) const, mf>
+    {
+        using ObjType = T;
+        static constexpr bool cnst = true;
+        static constexpr Trampoline trampoline =
+            &common::template doConstMemberCB<ObjType, mf>;
+        static constexpr void* castPtr(ObjType const* obj) noexcept
+        {
+            return const_cast<void*>(static_cast<const void*>(obj));
+        };
+    };
 };
 
 } // namespace details
@@ -194,11 +223,10 @@ class mem_fkn;
 template <typename Signature>
 class mem_fkn_base;
 
-template <typename R_, typename... Args>
-class mem_fkn_base<R_(Args...)>
+template <typename R, typename... Args>
+class mem_fkn_base<R(Args...)>
 {
   protected:
-    using R = R_;
     using common = details::common<R(Args...)>;
     using DataPtr = typename common::DataPtr;
     using Trampoline = typename common::Trampoline;
@@ -239,11 +267,10 @@ class mem_fkn_base<R_(Args...)>
     }
 };
 
-template <typename T, typename R_, typename... Args>
-class mem_fkn<T, false, R_(Args...)> : public mem_fkn_base<R_(Args...)>
+template <typename T, typename R, typename... Args>
+class mem_fkn<T, false, R(Args...)> : public mem_fkn_base<R(Args...)>
 {
-    using R = R_;
-    using Base = class mem_fkn_base<R_(Args...)>;
+    using Base = class mem_fkn_base<R(Args...)>;
     static constexpr const bool cnst = false;
     using common = details::common<R(Args...)>;
     using DataPtr = typename common::DataPtr;
@@ -306,6 +333,7 @@ class mem_fkn<T, true, R(Args...)> : public mem_fkn_base<R(Args...)>
     {
         return mem_fkn{&common::template doConstMemberCB<T, memFkn_>};
     }
+
     template <R (T::*memFkn_)(Args... args) const>
     DELEGATE_CXX14CONSTEXPR mem_fkn& set() noexcept
     {
@@ -567,6 +595,70 @@ class delegate<R(Args...)>
         return *this;
     }
 
+    /**
+     * Combine a MemFkn with an object to set this delegate.
+     */
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)> f,
+                                          T& o) noexcept
+    {
+        m_cb = f.ptr();
+        m_ptr = static_cast<void*>(&o);
+        return *this;
+    }
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)> f,
+                                          T const& o) = delete;
+
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> f,
+                                          T const& o) noexcept
+    {
+        m_cb = f.ptr();
+        m_ptr = const_cast<void*>(static_cast<const void*>(&o));
+        return *this;
+    }
+    template <class T>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> f,
+                                          T& o) noexcept
+    {
+        return set(f, static_cast<T const&>(o));
+    }
+
+    template <class T, bool cnst>
+    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, cnst, R(Args...)> f,
+                                          T&& o) = delete;
+
+    // C++17 allow template<auto> for non type template arguments.
+    // Use to avoid specifying object type.
+#if __cplusplus >= 201703
+
+    template <auto mFkn>
+    constexpr delegate&
+    set(typename common::template DeduceMemberType<decltype(mFkn),
+                                                   mFkn>::ObjType& obj) noexcept
+    {
+        using DM =
+            typename common::template DeduceMemberType<decltype(mFkn), mFkn>;
+        m_cb = DM::trampoline;
+        m_ptr = DM::castPtr(&obj);
+        return *this;
+    }
+    template <auto mFkn>
+    constexpr delegate& set(typename common::template DeduceMemberType<
+                            decltype(mFkn), mFkn>::ObjType const& obj) noexcept
+    {
+        using DM =
+            typename common::template DeduceMemberType<decltype(mFkn), mFkn>;
+        m_cb = DM::trampoline;
+        m_ptr = DM::castPtr(&obj);
+        return *this;
+    }
+    template <auto mFkn>
+    constexpr delegate& set(typename common::template DeduceMemberType<
+                            decltype(mFkn), mFkn>::ObjType&& obj) = delete;
+#endif
+
     DELEGATE_CXX14CONSTEXPR delegate& set_fkn(TargetFreeCB fkn) noexcept
     {
         return set(fkn);
@@ -676,40 +768,6 @@ class delegate<R(Args...)>
         return delegate(fkn, ptr);
     }
 
-    /**
-     * Combine a MemFkn with an object to set this delegate.
-     */
-    template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)> f,
-                                          T& o) noexcept
-    {
-        m_cb = f.ptr();
-        m_ptr = static_cast<void*>(&o);
-        return *this;
-    }
-    template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, false, R(Args...)> f,
-                                          T const& o) = delete;
-
-    template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> f,
-                                          T const& o) noexcept
-    {
-        m_cb = f.ptr();
-        m_ptr = const_cast<void*>(static_cast<const void*>(&o));
-        return *this;
-    }
-    template <class T>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> f,
-                                          T& o) noexcept
-    {
-        return set(f, static_cast<T const&>(o));
-    }
-
-    template <class T, bool cnst>
-    DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, cnst, R(Args...)> f,
-                                          T&& o) = delete;
-
     template <class T>
     static constexpr delegate make(mem_fkn<T, false, R(Args...)> f,
                                    T& o) noexcept
@@ -737,83 +795,32 @@ class delegate<R(Args...)>
     template <class T, bool cnst>
     static constexpr delegate make(mem_fkn<T, cnst, R(Args...)>, T&&) = delete;
 
-    // Helper struct to deduce member function types and const.
-    template <typename T, T>
-    struct DeduceMemberType;
-
-    template <typename T, R (T::*mf)(Args...)>
-    struct DeduceMemberType<R (T::*)(Args...), mf>
-    {
-        using ObjType = T;
-        static constexpr bool cnst = false;
-        static constexpr Trampoline trampoline =
-            &common::template doMemberCB<ObjType, mf>;
-        static constexpr void* castPtr(ObjType* obj) noexcept
-        {
-            return static_cast<void*>(obj);
-        }
-    };
-    template <typename T, R (T::*mf)(Args...) const>
-    struct DeduceMemberType<R (T::*)(Args...) const, mf>
-    {
-        using ObjType = T;
-        static constexpr bool cnst = true;
-        static constexpr Trampoline trampoline =
-            &common::template doConstMemberCB<ObjType, mf>;
-        static constexpr void* castPtr(ObjType const* obj) noexcept
-        {
-            return const_cast<void*>(static_cast<const void*>(obj));
-        };
-    };
-
     // C++17 allow template<auto> for non type template arguments.
-    // Use to avoid specifying object type.
+    // Use to avoid specifying object type. (Getting a bit hairy here...)
 #if __cplusplus >= 201703
-
     template <auto mFkn>
-    constexpr delegate&
-    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj) noexcept
+    static constexpr delegate make(typename common::template DeduceMemberType<
+                                   decltype(mFkn), mFkn>::ObjType& obj) noexcept
     {
-        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
-        m_cb = DM::trampoline;
-        m_ptr = DM::castPtr(&obj);
-        return *this;
-    }
-    template <auto mFkn>
-    constexpr delegate&
-    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const&
-            obj) noexcept
-    {
-        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
-        m_cb = DM::trampoline;
-        m_ptr = DM::castPtr(&obj);
-        return *this;
-    }
-    template <auto mFkn>
-    constexpr delegate&
-    set(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&& obj) =
-        delete;
-
-    template <auto mFkn>
-    static constexpr delegate
-    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType& obj) noexcept
-    {
-        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        using DM =
+            typename common::template DeduceMemberType<decltype(mFkn), mFkn>;
         return delegate{DM::trampoline, DM::castPtr(&obj)};
     }
     template <auto mFkn>
     static constexpr delegate
-    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType const&
-             obj) noexcept
+    make(typename common::template DeduceMemberType<
+         decltype(mFkn), mFkn>::ObjType const& obj) noexcept
     {
-        using DM = DeduceMemberType<decltype(mFkn), mFkn>;
+        using DM =
+            typename common::template DeduceMemberType<decltype(mFkn), mFkn>;
         return delegate{DM::trampoline, DM::castPtr(&obj)};
     }
 
     // Temporaries not allowed.
     template <auto mFkn>
     static constexpr delegate
-    make(typename DeduceMemberType<decltype(mFkn), mFkn>::ObjType&&) = delete;
+    make(typename common::template DeduceMemberType<decltype(mFkn),
+                                                    mFkn>::ObjType&&) = delete;
 
 #endif
 

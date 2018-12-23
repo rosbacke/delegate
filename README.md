@@ -110,9 +110,9 @@ The main intended use is as an argument to delegate. A mem_fkn and an object can
 the delegate class to tie an object to the member function and later the delegate
 can be called in the normal way. mem_fkn offers a way to delay the combination of
 the object and the member function name.
-mem_fkn require more type information compared to delegate. 
-In addition to call signature it require the type of the object to call on and a bool 
-to signal if the functions stored is a const method.
+mem_fkn require more type information compared to delegate. In addition to call signature it 
+require the type of the object to call on and a bool to signal if the functions stored
+is a const method.
 
 ## Delegate examples
 
@@ -164,6 +164,11 @@ Base case for free functions are covered above. For member functions see below.
         del.set<Test, &Test::cmember>(ct);
         res = del(1); 
         // res is now 4.
+        
+        // For C++17, we can deduce the object type, the following will work.
+        del.set<&Test::member>(t);
+        del.set<&Test::cmember>(ct);
+        // ...
     }
 
 For functors, the delegate expect the user to keep them alive.
@@ -262,6 +267,7 @@ objects directly. The most common one given below.
 
         del = Del::make<testFkn>();
         del = Del::make<Test, &Test::member>(t);
+        del = Del::make<&Test::member>(t); // C++17
 
         del = Del::make(functor);
 
