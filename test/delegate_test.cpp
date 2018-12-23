@@ -569,18 +569,17 @@ TEST(delegate, test_constexpr)
     auto CXX_14CONSTEXPR del10 = delegate<void()>{}.set(s_cf);
     (void)del10;
 
-#if 0
-    // MemFkn
+    // mem_fkn
     auto constexpr memFkn =
-        delegate<void()>::memFkn<TestMember, &TestMember::member>();
+        mem_fkn<TestMember, false, void()>::make<&TestMember::member>();
     auto constexpr memFkn2 =
-        delegate<void()>::memFkn<TestMember, &TestMember::cmember>();
-    auto CXX_14CONSTEXPR del12 = delegate<void()>{}.set(memFkn, s_f);
+        mem_fkn<TestMember, true, void()>::make<&TestMember::cmember>();
+
+    auto CXX_14CONSTEXPR del12 = delegate<void()>{}.set(memFkn, tm);
     (void)del12;
 
-    auto CXX_14CONSTEXPR del14 = delegate<void()>{}.set(memFkn2, s_cf);
+    auto CXX_14CONSTEXPR del14 = delegate<void()>{}.set(memFkn2, ctm);
     (void)del14;
-#endif
 
     // Make:
     // Free function
