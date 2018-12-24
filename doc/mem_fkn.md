@@ -20,8 +20,8 @@ a default constructed return object. Hence it is valid to call a `mem_fkn` in nu
     class mem_fkn<T, cnst, R(Args...)> 
 ```
 
-| Type parameters
-| ---
+| Type parameters | Description
+| --- | ---
 | **T** | Type for the object to call this member function on.
 | **cnst** | *false* : Need to call on non const object. *true* : can call on const object.
 | **Signature** | Signature for function call. Contain return type and argument types, similar to std::function.
@@ -32,8 +32,8 @@ a default constructed return object. Hence it is valid to call a `mem_fkn` in nu
 
 ### Member functions
 
-| Member function | 
-| ---
+| Member function |  Description
+| --- | ---
 | `mem_fkn()` | Default construct a *mem_fkn*. Post-condition: `this->null() == true.`
 | `bool null() const` | Return _true_ if the mem_fkn is in a null state.
 | `void clear()`| Set *mem_fkn* to null state. Post-condition: `this->null() == true.`
@@ -41,23 +41,23 @@ a default constructed return object. Hence it is valid to call a `mem_fkn` in nu
 
 ##### When cnst == false
 
-| Member function | 
-| ---
+| Member function |  Description
+| --- | ---
 | `R invoke(T& o, Args...)`| Call the stored wrapper on object _o_. Return the result from the call.
 | `template<R (T::*mf)(Args...)> mem_fkn& set()` | Create a wrapper for *mf* member function and store the pointer. return `*this`
 | `template<R (T::*mf)(Args...) const> mem_fkn& set_from_const()` | Create a wrapper for *mf* member function and store the pointer. return `*this`
 
 ##### When cnst == true
 
-| Member function | 
-| ---
+| Member function |  Description
+| --- | ---
 | `R invoke(T const& o, Args...)`| Call the stored wrapper on object _o_. Return the result from the call.
 | `template<R (T::*mf)(Args...) const> mem_fkn& set()` | Create a wrapper for *mf* member function and store the pointer. return `*this`
 
 ### Static member functions
 
-| Static function | 
-| ---
+| Static function |  Description
+| --- | ---
 | `bool equal(mem_fkn const&, mem_fkn const&)` | Return _true_ if both arguments point to the same wrapper function or both are in null state.
 | `bool less(mem_fkn const&, mem_fkn const&)` | Return _true_ if the _lhs_ wrapper function is < the _rhs_ wrapper function. The null state is < all stored wrappers.
 | `void clear()`| Set *mem_fkn* to null state. Post-condition: `this->null() == true.`
@@ -65,21 +65,21 @@ a default constructed return object. Hence it is valid to call a `mem_fkn` in nu
 
 ##### When cnst == false
 
-| Static function | 
-| ---
+| Static function |  Description
+| --- | ---
 | `template<R (T::*mf)(Args...)> mem_fkn make()` | Create a wrapper for *mf* member function.  return a mem_fkn pointing to the wrapper.
 | `template<R (T::*mf)(Args...) const> mem_fkn make_from_const()` | Create a wrapper for *mf* member function. Return a *mem_fkn* pointing to the wrapper.
 
 ##### When cnst == true
 
-| Static function | 
-| ---
+| Static function |  Description
+| --- | ---
 | `template<R (T::*mf)(Args...) const> mem_fkn make()` |Create a wrapper for *mf* member function.  return a *mem_fkn* pointing to the wrapper.
 
 ### Free functions, operator overloads.
 
-| Static function | 
-| ---
+| Static function |  Description
+| --- | ---
 | `operator==()` | Return true when considered *equal*.
 | `operator!=()` | Return true when considered not *equal*.
 | `operator<()` | Return true when considered *less(lhs,rhs)*.
