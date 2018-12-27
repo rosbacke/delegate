@@ -23,6 +23,7 @@ allows the optimizer to see through part of the call. This also means it fulfill
 for being trivially_copyable, meaning it can safely be memcpy:ied between objects.
 See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp/types/is_trivially_copyable).
 
+Detailed [delegate API documentation is here](doc/delegate.md). 
 
 ## Quick start.
 - clone the repo.

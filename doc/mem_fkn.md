@@ -60,8 +60,6 @@ a default constructed return object. Hence it is valid to call a `mem_fkn` in nu
 | --- | ---
 | `bool equal(mem_fkn const&, mem_fkn const&)` | Return _true_ if both arguments point to the same wrapper function or both are in null state.
 | `bool less(mem_fkn const&, mem_fkn const&)` | Return _true_ if the _lhs_ wrapper function is < the _rhs_ wrapper function. The null state is < all stored wrappers.
-| `void clear()`| Set *mem_fkn* to null state. Post-condition: `this->null() == true.`
-| `explicit operator bool() const`| Return `!null()`
 
 ##### When cnst == false
 
@@ -80,9 +78,9 @@ a default constructed return object. Hence it is valid to call a `mem_fkn` in nu
 
 | Static function |  Description
 | --- | ---
-| `operator==()` | Return true when considered *equal*.
-| `operator!=()` | Return true when considered not *equal*.
-| `operator<()` | Return true when considered *less(lhs,rhs)*.
-| `operator<=()` | Return true when considered *less(lhs,rhs)* or *equal*.
-| `operator>=()` | Return true when considered *less(rhs,lhs)* or *equal*.
-| `operator>()` | Return true when considered *less(rhs,lhs)*.
+| `bool operator==()` | Return true when considered *equal*.
+| `bool operator!=()` | Return true when considered not *equal*.
+| `bool operator<()` | Return true when considered *less(lhs,rhs)*.
+| `bool operator<=()` | Return true when considered *less(lhs,rhs)* or *equal*.
+| `bool operator>=()` | Return true when considered *less(rhs,lhs)* or *equal*.
+| `bool operator>()` | Return true when considered *less(rhs,lhs)*.
