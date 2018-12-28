@@ -446,6 +446,22 @@ class delegate<R(Args...)>
         return freeFkn(*obj, args...);
     }
 
+    // Adapter function for the free function with extra first void*arg
+    // in the called function, set at delegate construction.
+    template <R(freeFkn)(void*, Args...)>
+    inline static R dofreeFknWithVoidPtr(DataPtr const& o, Args... args)
+    {
+        return freeFkn(o.v_ptr, args...);
+    }
+
+    // Adapter function for the free function with extra first arg
+    // in the called function, set at delegate construction.
+    template <R(freeFkn)(void const*, Args...)>
+    inline static R dofreeFknWithVoidConstPtr(DataPtr const& o, Args... args)
+    {
+        return freeFkn(static_cast<void const*>(o.v_ptr), args...);
+    }
+
   public:
     // Default construct with stored ptr == nullptr.
     constexpr delegate() = default;
@@ -667,6 +683,58 @@ class delegate<R(Args...)>
         return set(fkn);
     }
 
+    template <R (*fkn)(void*, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_void(void* ctx) noexcept
+    {
+        m_cb = &dofreeFknWithVoidPtr<fkn>;
+        m_ptr.v_ptr = ctx;
+        return *this;
+    }
+
+    template <R (*fkn)(void const*, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate&
+    set_free_with_void(void const* ctx) noexcept
+    {
+        m_cb = &dofreeFknWithVoidConstPtr<fkn>;
+        m_ptr.v_ptr = const_cast<void*>(ctx);
+        return *this;
+    }
+
+    template <R (*fkn)(void*, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate&
+    set_free_with_void(void const* ctx) noexcept = delete;
+
+    template <typename T, R (*fkn)(T&, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T& o) noexcept
+    {
+        m_cb = &dofreeFknWithObjectRef<T, fkn>;
+        m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&o));
+        return *this;
+    }
+
+    template <typename T, R (*fkn)(T const&, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T& o) noexcept
+    {
+        m_cb = &dofreeFknWithObjectConstRef<T, fkn>;
+        m_ptr.v_ptr = static_cast<void*>(&o);
+        return *this;
+    }
+
+    template <typename T, R (*fkn)(T const&, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T const& o) noexcept
+    {
+        m_cb = &dofreeFknWithObjectConstRef<T, fkn>;
+        m_ptr.v_ptr = const_cast<void*>(static_cast<void const*>(&o));
+        return *this;
+    }
+
+    template <typename T, R (*fkn)(T&, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T const&) = delete;
+    template <typename T, R (*fkn)(T&, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T&&) = delete;
+    template <typename T, R (*fkn)(T const&, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T&&) = delete;
+
     /**
      * Create a callback to a free function with a specific type on
      * the pointer.
@@ -725,6 +793,22 @@ class delegate<R(Args...)>
         return delegate{&common::doRuntimeFkn, fkn};
     }
 
+    template <R (*fkn)(void*, Args...)>
+    static constexpr delegate make_free_with_void(void* ctx) noexcept
+    {
+        return delegate{&dofreeFknWithVoidPtr<fkn>, ctx};
+    }
+
+    template <R (*fkn)(void const*, Args...)>
+    static constexpr delegate make_free_with_void(void const* ctx) noexcept
+    {
+        return delegate{&dofreeFknWithVoidConstPtr<fkn>,
+                        const_cast<void*>(ctx)};
+    }
+
+    template <R (*fkn)(void const*, Args...)>
+    static constexpr delegate make_free_with_void(void* ctx) = delete;
+
     /**
      * Create a delegate to a free function, where the first argument is
      * assumed to be a reference to the object supplied as argument here.
@@ -732,44 +816,32 @@ class delegate<R(Args...)>
      * of the delegate.
      */
     template <typename T, R (*fkn)(T&, Args...)>
-    static constexpr delegate make(T& o) noexcept
+    static constexpr delegate make_free_with_object(T& o) noexcept
     {
         return delegate{&dofreeFknWithObjectRef<T, fkn>,
                         static_cast<void*>(&o)};
     }
 
     template <typename T, R (*fkn)(T const&, Args...)>
-    static constexpr delegate make(T& o) noexcept
+    static constexpr delegate make_free_with_object(T& o) noexcept
     {
         return delegate{&dofreeFknWithObjectConstRef<T, fkn>,
                         static_cast<void const*>(&o)};
     }
 
-    template <typename T, R (*fkn)(T&, Args...)>
-    static constexpr delegate make(T&&) = delete;
     template <typename T, R (*fkn)(T const&, Args...)>
-    static constexpr delegate make(T&&) = delete;
-
-    /**
-     * Create a callback to a free function with a signature R(void*, Args...)
-     * When calling, add the stored void* pointer as first argument.
-     */
-    template <Trampoline fkn>
-    static constexpr delegate makeVoidCB(void* ptr = nullptr) noexcept
+    static constexpr delegate make_free_with_object(T const& o) noexcept
     {
-        return delegate(fkn, ptr);
+        return delegate{&dofreeFknWithObjectConstRef<T, fkn>,
+                        const_cast<void*>(static_cast<void const*>(&o))};
     }
 
-    /**
-     * Create a callback to a free function with a signature R(void*, Args...)
-     * When calling, add the stored void* pointer as first argument.
-     * Accept pointer as runtime argument.
-     */
-    static constexpr delegate makeVoidCB(Trampoline fkn,
-                                         void* ptr = nullptr) noexcept
-    {
-        return delegate(fkn, ptr);
-    }
+    template <typename T, R (*fkn)(T&, Args...)>
+    static constexpr delegate make_free_with_object(T const&) = delete;
+    template <typename T, R (*fkn)(T&, Args...)>
+    static constexpr delegate make_free_with_object(T&&) = delete;
+    template <typename T, R (*fkn)(T const&, Args...)>
+    static constexpr delegate make_free_with_object(T&&) = delete;
 
     template <class T>
     static constexpr delegate make(mem_fkn<T, false, R(Args...)> f,

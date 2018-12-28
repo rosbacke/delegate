@@ -62,98 +62,157 @@ a delegate constructor call.
 | `R operator()(Args...) const`| Call the stored wrapper fkn. Valid to call when *null()==true*
 | `set` | See separate overload set table.
 | `delegate& set_fkn(R (*fkn)(Args...)` | Same as *set*. With unique member name it can implicitly convert from stateless lambda to a free function.
+| `set_free_with_object` | See separate section.
+| `set_free_with_void` | See separate section.
 
-
-##### Overload set for member function *set*
+#### Overload set for *set* member function family
 
 All *set* functions are declared *noexcept*. For *C++14* and newer, it is *constexpr*. They return a reference to its own object.
 
-| *set* member function |  Description
-| --- | ---
-| `template <R (*fkn)(Args...)> delegate& set()` | Set delegate to call *fkn*.
-| `template <class T, R (T::*mf)(Args...)> delegate& set(T& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. 
-| `template <class T, R (T::*mf)(Args...) const> delegate& set(T const& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. 
-| `template <class T> delegate& set(T& obj)` | Create a wrapper for a functor and store a reference to *obj* to call on. Will call non-const `operator()`
-| `template <class T> delegate& set(T const& obj)` | Create a wrapper for a functor and store a reference to *obj* to call on. Will call const `operator()`
-| `template <class T> delegate& set(mem_fkn<T, false, R(Args...)> const& mf, T& obj)` | Store the wrapper from `mem_fkn` and a reference to *obj*.
-| `template <class T> delegate& set(mem_fkn<T, true, R(Args...)> const& mf, T const& obj)` | Store the wrapper from `mem_fkn` and a reference to *obj*.
-| `template <class T> delegate& set(mem_fkn<T, true, R(Args...)> const& mf, T& obj)` | Store the wrapper from `mem_fkn` and a reference to *obj*.
-| `delegate& set(R (*fkn)(Args...))` | Store a runtime variable free function pointer.
+**Set a free function.**  
+Create a wrapper for *fkn* and store in this object.  
+`template <R (*fkn)(Args...)>`  
+`delegate& set()`
 
-| *set*, C++17 and newer | Description
-| --- | ---
-| `template <auto mf> delegate& set(T& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. Deduce *T* from *mf*. Deduce to non const *mf*.
-| `template <auto mf> delegate& set(T const& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. Deduce *T* from *mf*. Require const *mf*.
+**Set a member function with object reference to call on.**  
+Create a wrapper for *mf* member function and store a reference to *obj* to call on.  
+`template <class T, R (T::*mf)(Args...)>`  
+`delegate& set(T& obj)`
 
-| *set*, Deleted functions.
-| ---
-| `template <class T, R (T::*memFkn)(Args... args)> delegate& set(T&&) =delete;`
-| `template <class T, R (T::*memFkn)(Args... args) const> delegate& set(T&&) =delete;`
-| `template <class T> delegate& set(T&&) =delete;`
-| `template <class T> delegate& set(mem_fkn<T, false, R(Args...)> const& f, T const& o) =delete;`
-| `template <class T> delegate& set(mem_fkn<T, false, R(Args...)> const& f, T&& o) =delete;`	
-| `template <class T> delegate& set(mem_fkn<T, true, R(Args...)> const& f, T&& o) =delete;`
-| `template <auto mf> delegate& set(<deduced type T from mf>&& obj) =delete; // >= C++17`
+`template <class T, R (T::*mf)(Args...) const>`  
+`delegate& set(T const& obj)`
+
+**C++17** Create a wrapper for *mf* member function and store a reference to *obj* to call on. Deduce *T* from *mf*. Only for C++17 and beyond.  
+`template <auto mf>`  
+`delegate& set(T& obj)`
+
+`template <auto mf>`  
+`delegate& set(T const& obj)`  // Require mf to be const declared.
+
+**Set a reference to a functor.**  
+Create a wrapper for a functor and store a reference to *obj* to call on.  
+`template <class T>`  
+`delegate& set(T& obj)`  // Will call non-const operator().
+
+`template <class T>`  
+`delegate& set(T const& obj)` // Will call const operator().
+
+**Set a mem_fkn with an object to call on.**  
+Store the wrapper from `mem_fkn` and a reference to *obj*.  
+`template <class T>`  
+`delegate& set(mem_fkn<T, false, R(Args...)> const& mf, T& obj)`
+
+`template <class T>`  
+`delegate& set(mem_fkn<T, true, R(Args...)> const& mf, T const& obj)`
+
+`template <class T>`  
+`delegate& set(mem_fkn<T, true, R(Args...)> const& mf, T& obj)`
+
+**Store a runtime variable free function pointer.**  
+`delegate& set(R (*fkn)(Args...))`
+
+`delegate& set_fkn(R (*fkn)(Args...))`  // Separate function name allow implicit conversion.
+
+**Set a free function with extra void context arg**.  
+Call a free function with an extra _void*_ as first argument. Intended to allow calling back to
+legacy _void*_ context pointer based code.  
+`template <typename T, R (*fkn)(void*, Args...)>`  
+`delegate& set_free_with_void(void*)`
+
+`template <typename T, R (*fkn)(void const*, Args...)>`  
+`delegate& set_free_with_void(void const*)`
+
+**Set a free function with extra object arg**.  
+Call a free function with an extra object reference as first first argument. Will pass on `obj` when called.
+Intended to allow calling back to code based on free functions, typically found in older systems.  
+`template <typename T, R (*fkn)(T&, Args...)>`  
+`delegate& set_free_with_object(T& obj)`
+
+`template <typename T, R (*fkn)(T const&, Args...)>`  
+`delegate& set_free_with_object(T& obj)`
+
+`template <typename T, R (*fkn)(T const&, Args...)>`  
+`delegate& set_free_with_object(T const& obj)`
+
+#### Deleted functions, *set* family.
+
+`template <class T, R (T::*memFkn)(Args... args)>`  
+`delegate& set(T&&) =delete;` // No temporaries.  
+
+`template <class T, R (T::*memFkn)(Args... args) const>`  
+`delegate& set(T&&) =delete;` // No temporaries.  
+
+`template <class T>`   // No temporaries.  
+`delegate& set(T&&) =delete;`
+
+`template <class T>`  // violates const correctness.  
+`delegate& set(mem_fkn<T, false, R(Args...)> const& f, T const& o) =delete;`
+
+`template <class T>`   // No temporaries.  
+`delegate& set(mem_fkn<T, false, R(Args...)> const& f, T&& o) =delete;`
+
+`template <class T>`   // No temporaries.  
+`delegate& set(mem_fkn<T, true, R(Args...)> const& f, T&& o) =delete;`
+
+`template <auto mf>`   // No temporaries.  
+`delegate& set(<deduced type T from mf>&& obj) =delete; // >= C++17`
+
+`template <typename T, R (*fkn)(void*, Args...)>` // violates const correctness.  
+`delegate& set_free_with_void(void const*) = delete;`
+
+`template <typename T, R (*fkn)(T&, Args...)>` // violates const correctness.  
+`delegate& set_free_with_object(T const&) = delete;`
+
+`template <typename T, R (*fkn)(T&, Args...)>` // No temporaries.   
+`delegate& set_free_with_object(T&&) = delete;`
+
+`template <typename T, R (*fkn)(T&, Args...) const>` // No temporaries.  
+`delegate& set_free_with_object(T&&) = delete;`  
 
 ### Static member functions
 
-| Static function |  Description
-| --- | ---
-| `bool equal(mem_fkn const&, mem_fkn const&)` | Return _true_ if both arguments point to the same wrapper function or both are in null state.
-| `bool less(mem_fkn const&, mem_fkn const&)` | Return _true_ if the _lhs_ wrapper function is < the _rhs_ wrapper function. The null state is < all stored wrappers.
-| `make` | See separate overload set table.
-| `delegate make_fkn(R (*fkn)(Args...)` | Same as *make*. With unique member name it can implicitly convert from stateless lambda to a free function.
+**equal**. Return _true_ if both arguments point to the same wrapper function and the context pointer are equal, or both delegates are in null state.  
+`bool equal(delegate const&, delegate const&)`
 
-##### Overload set for static member function *make*
+**less**. Return _true_ if the _lhs_ wrapper function is < the _rhs_ wrapper function. If wrapper functions are equal, return true if < is true on context pointers. The null state is < all stored wrappers.  
+`bool less(delegate const&, delegate const&)`
 
-All *make* functions are declared *noexcept* and *constexpr*. They return a newly constructed *delegate*.
 
-| *make* static member function |  Description
-| --- | ---
-| `template <R (*fkn)(Args...)> delegate make()` | Returned delegate will call *fkn*.
-| `template <class T, R (T::*mf)(Args...)> delegate make(T& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. 
-| `template <class T, R (T::*mf)(Args...) const> delegate make(T const& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. 
-| `template <class T> delegate make(T& obj)` | Create a wrapper for a functor and store a reference to *obj* to call on. Will call non-const `operator()`
-| `template <class T> delegate make(T const& obj)` | Create a wrapper for a functor and store a reference to *obj* to call on. Will call const `operator()`
-| `template <class T> delegate make(mem_fkn<T, false, R(Args...)> const& mf, T& obj)` | Store the wrapper from `mem_fkn` and a reference to *obj*.
-| `template <class T> delegate make(mem_fkn<T, true, R(Args...)> const& mf, T const& obj)` | Store the wrapper from `mem_fkn` and a reference to *obj*.
-| `template <class T> delegate make(mem_fkn<T, true, R(Args...)> const& mf, T& obj)` | Store the wrapper from `mem_fkn` and a reference to *obj*.
-| `delegate& make(R (*fkn)(Args...))` | Store a runtime variable free function pointer.
+#### Overload set for static member function *make*
 
-| *make*, C++17 and newer | Description
-| --- | ---
-| `template <auto mf> delegate make(T& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. Deduce *T* from *mf*. Deduce to non const *mf*.
-| `template <auto mf> delegate make(T const& obj)` | Create a wrapper for *mf* member function and store a reference to *obj* to call on. Deduce *T* from *mf*. Require const *mf*.
+The entire *make* family of functions are a mirror image of the *set* family.
+See the *set* family documentation and do the following transform:
+- Make it static member instead of normal member.
+- Have it return `delegate` insted of `delegate&`.
+- The *make* family is constexpr even for C++11.
 
-| *make*, Deleted functions.
-| ---
-| `template <class T, R (T::*memFkn)(Args... args)> delegate make(T&&) =delete;`
-| `template <class T, R (T::*memFkn)(Args... args) const> delegate make(T&&) =delete;`
-| `template <class T> delegate make(T&&) =delete;`
-| `template <class T> delegate make(mem_fkn<T, false, R(Args...)> const& f, T const& o) =delete;`
-| `template <class T> delegate make(mem_fkn<T, false, R(Args...)> const& f, T&& o) =delete;`	
-| `template <class T> delegate make(mem_fkn<T, true, R(Args...)> const& f, T&& o) =delete;`
-| `template <auto mf> delegate make(<deduced type T from mf>&& obj) =delete; // >= C++17`
-
-### Free functions, 
+### Free functions
 #### operator overloads, relations
 
-The basic relational operators. Defined in terms of static member functions `null`, `equal` and `less`. 
+The basic equality operators `==` and `!=` are defined. They are in terms of static member function `equal`.
 They are defined with this pattern:
 
-    template <typename R, typename... Args> constexpr bool operator op(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs) noexcept
+`template <typename R, typename... Args>`  
+`constexpr bool`  
+`operator op(const delegate<R(Args...)>& lhs, const delegate<R(Args...)>& rhs) noexcept`
     
-    The following operators are defined: 
-        ==, !=, <, <=, =>, > with this pattern.
 
 #### operator overloads, nullptr
 
-Defined in terms of static member functions `null`, `equal` and `less`. 
+Defined in terms of static member function `null` and `equal`. 
 
-| operator overload nullptr
-| ---
-| template <typename R, typename... Args> constexpr bool operator==(delegate<R(Args...)> const& lhs, nullptr_t const& rhs) noexcept;
-| template <typename R, typename... Args> constexpr bool operator==(nullptr_t const&, delegate<R(Args...)> const& rhs) noexcept;
-| template <typename R, typename... Args> constexpr bool operator!=(delegate<R(Args...)> const& lhs, nullptr_t const& rhs) noexcept;
-| template <typename R, typename... Args> constexpr bool operator!=(nullptr_t const&, delegate<R(Args...)> const& rhs) noexcept;
+`template <typename R, typename... Args>`  
+`constexpr bool `  
+`operator==(delegate<R(Args...)> const& lhs, nullptr_t const& rhs) noexcept;`
 
+`template <typename R, typename... Args>`  
+`constexpr bool `  
+`operator==(nullptr_t const&, delegate<R(Args...)> const& rhs) noexcept;`
+
+`template <typename R, typename... Args>`  
+`constexpr bool`  
+`operator!=(delegate<R(Args...)> const& lhs, nullptr_t const& rhs) noexcept;`
+
+`template <typename R, typename... Args>`  
+`constexpr bool `  
+`operator!=(nullptr_t const&, delegate<R(Args...)> const& rhs) noexcept;`

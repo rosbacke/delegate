@@ -142,6 +142,27 @@ TEST(delegate, is_trivially_copyable)
     EXPECT_TRUE(std::is_standard_layout<Del>::value);
 }
 
+TEST(mem_fkn, is_trivially_copyable)
+{
+    // Note: being constexpr and trivial is mutually exclusive.
+    // Trivial require default initialization do not set a value,
+    // constexpr require to set a value.
+    // We can fulfill _trivially_copyable -> this class can safely be
+    // memcpy:ied between places.
+
+    struct Obj
+    {
+    };
+
+    using MemFknT = mem_fkn<Obj, true, int(int)>;
+    EXPECT_TRUE(std::is_trivially_copyable<MemFknT>::value);
+    EXPECT_TRUE(std::is_standard_layout<MemFknT>::value);
+
+    using MemFknF = mem_fkn<Obj, false, int(int)>;
+    EXPECT_TRUE(std::is_trivially_copyable<MemFknF>::value);
+    EXPECT_TRUE(std::is_standard_layout<MemFknF>::value);
+}
+
 TEST(delegate, nulltests)
 {
     // Default construct, Can call default constructed.
@@ -881,7 +902,7 @@ testFreeFunctionWithPtr()
     TestObj o;
 
     // Create simple callback to a normal free function.
-    auto cb = delegate<int(int)>::make<TestObj, adder>(o);
+    auto cb = delegate<int(int)>::make_free_with_object<TestObj, adder>(o);
 
     o.m_val = 6;
     int res = cb(3);
@@ -1028,4 +1049,131 @@ TEST(mem_fkn, value_based_const)
     EXPECT_TRUE(mf2 <= mf3 || mf2 >= mf3);
     EXPECT_FALSE(mf2 < mf3 && mf2 > mf3);
     EXPECT_TRUE(mf2 < mf3 || mf2 > mf3);
+}
+
+// See that the set/make for aiding in reworking old C code works.
+// Assume some driver (act as a service) which offer callbacks to be registered.
+// Assume it offers a void* context pointer that will be passed on.
+// In the case where a context pointer is not needed/unwanted a normal function
+// pointer would work better. Do note it is required for member function calls
+// anyway.
+//
+// The delegate should help with this workflow:
+// 0. Make sure the driver / user code actually offers this context pointer in
+// callbacks.
+//    Get your C code to compile with C++ compiler.
+// 1. Ensure the driver do not expose the void*/fkn pointer directly. Have a
+// setter function
+//    accepting void* / free function pointer.
+// 2. Replace the raw function pointer / void* pointer in driver with  a
+// delegate.
+//    Set it in the setter function above. Use 'set_freefkn_with_void()' in
+//    setter function. Let the driver call delegate instead of old pointers.
+// 3. Possibly convert the driver to a class if it is not done yet.
+// 4. Offer member function to register delegates. (expose internal
+// delegate/offer to copy in
+//    a full delegate.)
+//
+// At this point the driver is converted to a C++ class, while the user code
+// Is still mostly C. You can now convert User code one at a time.
+// Converting user code to classes can be done in 2 steps:
+// 1. Convert the struct to a class, but keep external functions external for
+// now.
+// 2. Convert all usage of void* ctx into the proper class type. Use
+//    'set_free_with_object' to get type safety in the callbacks.
+// 3. Convert free functions to member functions as needed to enforce
+// invariants.
+//    Once a callback target becomes a member change registration to
+//    a normal 'set' with member function name.
+
+int
+fknWithObject(MemberCheck& mc, int val)
+{
+    return mc.member(val);
+}
+
+int
+fknWithConstObject(MemberCheck const& cmc, int val)
+{
+    return cmc.cmember(val);
+}
+
+int
+fknWithVoid(void* ctx, int val)
+{
+    return static_cast<MemberCheck*>(ctx)->member(val);
+}
+
+int
+fknWithConstVoid(void const* cctx, int val)
+{
+    return static_cast<MemberCheck const*>(cctx)->cmember(val);
+}
+
+TEST(delegate, with_void)
+{
+    MemberCheck mc;
+    MemberCheck const cmc;
+
+    using Del = delegate<int(int)>;
+    Del del;
+
+    del.set_free_with_void<fknWithVoid>(static_cast<void*>(&mc));
+    EXPECT_EQ(del(1), 2);
+
+    // del.set_free_with_void<fknWithVoid>(static_cast<const void*>(&cmc));
+    // EXPECT_EQ(del(1), 2);
+
+    del.set_free_with_void<fknWithConstVoid>(static_cast<const void*>(&mc));
+    EXPECT_EQ(del(1), 3);
+
+    del.set_free_with_void<fknWithConstVoid>(static_cast<void const*>(&cmc));
+    EXPECT_EQ(del(1), 3);
+
+    del = Del::make_free_with_void<fknWithVoid>(static_cast<void*>(&mc));
+    EXPECT_EQ(del(1), 2);
+
+    // del = Del::make_free_with_void<fknWithVoid>(static_cast<const
+    // void*>(&cmc)); EXPECT_EQ(del(1), 2);
+
+    del = Del::make_free_with_void<fknWithConstVoid>(
+        static_cast<const void*>(&mc));
+    EXPECT_EQ(del(1), 3);
+
+    del = Del::make_free_with_void<fknWithConstVoid>(
+        static_cast<void const*>(&cmc));
+    EXPECT_EQ(del(1), 3);
+}
+
+TEST(delegate, with_object)
+{
+    MemberCheck mc;
+    MemberCheck const cmc;
+
+    using Del = delegate<int(int)>;
+    Del del;
+
+    del.set_free_with_object<MemberCheck, fknWithObject>(mc);
+    EXPECT_EQ(del(1), 2);
+
+    // del.set_free_with_object<MemberCheck, fknWithObject>(cmc);
+    // EXPECT_EQ(del(1), 2);
+
+    del.set_free_with_object<MemberCheck, fknWithConstObject>(cmc);
+    EXPECT_EQ(del(1), 3);
+
+    del.set_free_with_object<MemberCheck, fknWithConstObject>(cmc);
+    EXPECT_EQ(del(1), 3);
+
+    del = Del::make_free_with_object<MemberCheck, fknWithObject>(mc);
+    EXPECT_EQ(del(1), 2);
+
+    // del = Del::make_free_with_object<MemberCheck, fknWithObject>(cmc);
+    // EXPECT_EQ(del(1), 2);
+
+    del = Del::make_free_with_object<MemberCheck, fknWithConstObject>(cmc);
+    EXPECT_EQ(del(1), 3);
+
+    del = Del::make_free_with_object<MemberCheck, fknWithConstObject>(cmc);
+    EXPECT_EQ(del(1), 3);
 }

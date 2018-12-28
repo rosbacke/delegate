@@ -25,7 +25,7 @@ See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp
 
 Detailed [delegate API documentation is here](doc/delegate.md). 
 
-## Quick start.
+## Quick start
 - clone the repo.
 - Add include path <repo_root>/include
 - In program '#include "delegate/delegate.hpp"'
@@ -54,7 +54,7 @@ Example use case:
     }
 
 
-## Design goals driving the design.
+## Design goals driving the design
 
   * Should behave close to a normal function pointer.
     Small, efficient, no heap allocation, no exceptions.
@@ -279,8 +279,43 @@ objects directly. The most common one given below.
         del = Del::make_fkn([](int x) -> int { return x + 6; }));
     }
 
+## Aid for porting legacy code
 
-## A note on skipping constructors.
+The delegate offer some extra set/make functions to aid in porting legacy code.
+You can make a delegate call a free function with either a void* first argument,
+or an explicit first argument object. This argument is given by the delegate
+internal context pointer. e.g:
+
+    struct Test {
+        int member(int x)
+        { return x + 2; }
+    };
+    
+    int fknWithObject(Test& obj, int val) 
+    { return obj.member(val); }
+    
+    int fknWithVoid(void* ctx, int val) 
+    { return static_cast<Test*>(ctx)->member(val); }
+    
+    int main() 
+    {
+ 	    Test obj;
+		delegate<int(int)> del;
+
+		del.set_free_with_void<fknWithVoid>(static_cast<void*>(&obj));
+		EXPECT_EQ(del(1), 3);
+		
+		del.set_free_with_object<MemberCheck, fknWithObject>(obj));
+		EXPECT_EQ(del(1), 3);
+ 	}
+
+This allow you to replace legacy callbacks one step at a time. You can 
+make a driver use delegates while the user code still uses void* context
+pointers. It should allow for a decoupled refactoring of the driver/user code.
+These have the same const behaviour and set/make variants as the rest of the 
+setup functions. We use longer names to ease refactoring.
+
+## A note on skipping constructors
 
 Not using constructors to set up functions is due to how template 
 arguments are used.
@@ -309,7 +344,7 @@ pass, so delegate do support passing in a runtime variable function pointer
 of the right signature. It also allows implicit conversion from stateless lambdas
 in this case.
 
-### Alternative make_delegate free function.
+### Alternative make_delegate free function
 
 In the spirit of smart pointer one could use 'make_delegate' to construct a 
 delegate. However there is one thing to keep in mind. 
@@ -322,7 +357,7 @@ Omitting the signature could work, but would be ambiguous as soon as the functio
 This will not offer extra functionality over using the 'make' functions
 so there is currently no effort in supporting this.
 
-## Do not take address of things in std.
+## Do not take address of things in std
 
 In C and traditional C++, function pointers and taking function addresses 
 are normal operation. Do note it can affect maintainability of your code.
