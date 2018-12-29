@@ -310,6 +310,12 @@ This allows you to replace legacy callbacks one step at a time. You can make a d
 pointers. It should allow for a decoupled refactoring of the driver/user code.
 These have the same const behavior and set/make variants as the rest of the setup functions. We use longer names to ease refactoring.
 
+## Using a custom namespace for delegate
+
+Currently the delegate and mem_fkn classes are placed in the global namespace.
+The header file does not include anything else so it is possible to
+include it into another namespace. The unit test checks this and seems to work.
+
 ## A note on skipping constructors
 
 Not using constructors to set up functions is due to how a template 

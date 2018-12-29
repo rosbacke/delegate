@@ -1,4 +1,10 @@
+namespace test_ns {
 #include "delegate/delegate.hpp"
+}
+
+using test_ns::delegate;
+using test_ns::mem_fkn;
+
 #include <functional>
 
 #include <cassert>

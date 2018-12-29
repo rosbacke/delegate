@@ -8,9 +8,6 @@
 #ifndef DELEGATE_DELEGATE_HPP_
 #define DELEGATE_DELEGATE_HPP_
 
-#include <cstddef> // nullptr_t
-#include <cstdint> // uintptr_t
-
 /**
  * Storage of a callable object for functors, free and member functions.
  *
@@ -81,6 +78,9 @@
 
 namespace details
 {
+
+using nullptr_t = decltype(nullptr);
+
 template <typename T>
 T
 nullReturnFunction()
@@ -939,28 +939,28 @@ operator!=(const delegate<R(Args...)>& lhs,
 // Bite the bullet, this is how unique_ptr handle nullptr_t.
 template <typename R, typename... Args>
 constexpr bool
-operator==(std::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
+operator==(details::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
 {
     return rhs.null();
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator!=(std::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
+operator!=(details::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
 {
     return !(lhs == rhs);
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator==(const delegate<R(Args...)>& lhs, std::nullptr_t rhs) noexcept
+operator==(const delegate<R(Args...)>& lhs, details::nullptr_t rhs) noexcept
 {
     return lhs.null();
 }
 
 template <typename R, typename... Args>
 constexpr bool
-operator!=(const delegate<R(Args...)>& lhs, std::nullptr_t rhs) noexcept
+operator!=(const delegate<R(Args...)>& lhs, details::nullptr_t rhs) noexcept
 {
     return !(lhs == rhs);
 }
