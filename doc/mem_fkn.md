@@ -4,12 +4,11 @@ Defined in header "delegate/delegate.h"
 
 Wrap a member function into a wrapper function and stores a pointer to this function.
 Keeps enough type information about the member function to later call it in a 
-type safe manner.
-The member function is supplied as a template value argument at construction and is used to synthetize a wrapper function. A pointer to the wrapper function is stored in the mem_fkn object.
+type-safe manner.
+The member function is supplied as a template value argument at construction and is used to synthesize a wrapper function. A pointer to the wrapper function is stored in the mem_fkn object.
 Once stored the `mem_fkn` only contain enough type information to safely call the stored wrapper.
 
-A `mem_fkn` in nullstate points to a default wrapper function that does nothing and returns 
-a default constructed return object. Hence it is valid to call a `mem_fkn` in null state. It will not affect the supplied object to the `invoke` call.
+A `mem_fkn` in null state points to a default wrapper function that does nothing and returns a default constructed return object. Hence it is valid to call a `mem_fkn` which is in the null state. It will not affect the supplied object to the `invoke` call.
 
 ---
 

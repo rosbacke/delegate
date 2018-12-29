@@ -2,30 +2,25 @@
 
 Defined in header "delegate/delegate.h"
 
-The class template `delegate` intend to be a reference to callable entities such as 
-free functions, member functions and functors. It wraps the actual call into 
-a wrapper function. It stores a pointer to it and a reference to the supplied object
+The class template `delegate` intend to be a reference to callable entities such as free functions, member functions, and functors. It wraps the actual call into a wrapper function. It stores a pointer to it and a reference to the supplied object
 to call on. 
-The delegate class require enough type information to define how a call is made, that is,
-the return type and arguments of the call. Other type information such as the stored 
-function name and type of function (free, member, functor) is invisible to the caller.
+The delegate class requires enough type information to define how a call is made, that is,
+the return type and arguments of the call. Other type information such as the stored function name and type of function (free, member, functor) is invisible to the caller.
 
-The main intended use case is as a std::function analog where were we guarantee small
+The main intended use case is as an std::function analog where were we guarantee small
 memory size (2 pointers), no exceptions, no heap allocation and being trivially_copyable.
 A delegate does not store the object to call on, only a reference, so the user must 
 ensure the lifetime.
 
-The delegate intend to be similar to a normal function pointer. It should work as a normal pointer (default constructible, compared to nullptr, act as a value type w.r.t. to the stored address and pointer const behaviour.)
+The delegate intends to be similar to a normal function pointer. It should work as a normal pointer (default constructible, compared to nullptr, act as a value type w.r.t. to the stored address and pointer const behavior.)
 
 There are 2 main overload sets to set up delegates, `set` and `make`. 
- * `set` : A templated member function which will set the value for the current object.
- * `make` : A templated static member function which return a newly constructed delegate.
+ * `set`: A templated member function which will set the value for the current object.
+ * `make`: A templated static member function which returns a newly constructed delegate.
 
-The actual function to call is supplied via the template argument which allow for creating
-the stored wrapper function. Giving the function statically will also allow the compiler 
-to optimize better.
-The delegate allow for storing normal runtime function pointers. It makes it possible to 
-store calls to stateless lambdas via lambda to function pointer conversion. Do note we still get the extra indirect call via an internal wrapper. A runtime function can be made via
+The actual function to call is supplied via the template argument which allows for creating
+the stored wrapper function. Giving the function statically will also allow the compiler to optimize better.
+The delegate allows for storing normal runtime function pointers. It makes it possible to store calls to stateless lambdas via lambda to function pointer conversion. Do note we still get the extra indirect call via an internal wrapper. A runtime function can be made via
 a delegate constructor call.
 
 ---
@@ -114,8 +109,8 @@ Store the wrapper from `mem_fkn` and a reference to *obj*.
 `delegate& set_fkn(R (*fkn)(Args...))`  // Separate function name allow implicit conversion.
 
 **Set a free function with extra void context arg**.  
-Call a free function with an extra _void*_ as first argument. Intended to allow calling back to
-legacy _void*_ context pointer based code.  
+Call a free function with an extra _void*_ as the first argument. Intended to allow calling back to
+legacy _void*_ context pointer-based code.  
 `template <typename T, R (*fkn)(void*, Args...)>`  
 `delegate& set_free_with_void(void*)`
 
@@ -123,7 +118,7 @@ legacy _void*_ context pointer based code.
 `delegate& set_free_with_void(void const*)`
 
 **Set a free function with extra object arg**.  
-Call a free function with an extra object reference as first first argument. Will pass on `obj` when called.
+Call a free function with an extra object reference as the first argument. Will pass on `obj` when called.
 Intended to allow calling back to code based on free functions, typically found in older systems.  
 `template <typename T, R (*fkn)(T&, Args...)>`  
 `delegate& set_free_with_object(T& obj)`
@@ -171,7 +166,7 @@ Intended to allow calling back to code based on free functions, typically found 
 
 ### Static member functions
 
-**equal**. Return _true_ if both arguments point to the same wrapper function and the context pointer are equal, or both delegates are in null state.  
+**equal**. Return _true_ if both arguments point to the same wrapper function and the context pointer is equal, or both delegates are in the null state.  
 `bool equal(delegate const&, delegate const&)`
 
 **less**. Return _true_ if the _lhs_ wrapper function is < the _rhs_ wrapper function. If wrapper functions are equal, return true if < is true on context pointers. The null state is < all stored wrappers.  
@@ -183,7 +178,7 @@ Intended to allow calling back to code based on free functions, typically found 
 The entire *make* family of functions are a mirror image of the *set* family.
 See the *set* family documentation and do the following transform:
 - Make it static member instead of normal member.
-- Have it return `delegate` insted of `delegate&`.
+- Have it return `delegate` instead of `delegate&`.
 - The *make* family is constexpr even for C++11.
 
 ### Free functions

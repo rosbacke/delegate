@@ -6,21 +6,21 @@ trivially_copyable.
 ## Overview
 
 The 'delegate' is an include only embedded friendly alternative to std::function.
-Main purpose is to store callable things such as free functions, member functions
-and functors. Once stored, the delegate can be called without knowledge of the 
+The main purpose is to store callable things such as free functions, member functions, 
+and functors. Once stored, the delegate can be called without knowledge of the
 type of stored thing.
 
 The delegate guarantees no heap allocation. In will never throw exceptions itself.
-Intended use is as a general callback storage (think function pointer analog).
+Intended use is as general callback storage (think function pointer analog).
 The price to pay is that the delegate only stores a pointer to referenced functor
 objects or objects to call member functions on. 
-The user needs to handle the lifetime of a refered object.
+The user needs to handle the lifetime of a referred object.
 
-In addition the delegation object has a smaller footprint compared to common std::function 
+In addition, the delegation object has a smaller footprint compared to common std::function 
 implementations, using only 2 pointers (free function pointer and void pointer).
-It avoids virtual dispatch internally. That result in small object code footprint and 
+It avoids virtual dispatch internally. That results in small object code footprint and
 allows the optimizer to see through part of the call. This also means it fulfills the requirements
-for being trivially_copyable, meaning it can safely be memcpy:ied between objects.
+for being trivially_copyable, meaning it can safely be memcpy:d between objects.
 See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp/types/is_trivially_copyable).
 
 Detailed [delegate API documentation is here](doc/delegate.md). 
@@ -36,8 +36,8 @@ Example use case:
     #include "delegate/delegate.hpp"
     
     struct Example {
-	    static void staticFkn(int) {};
-	    void memberFkn(int) {};
+        static void staticFkn(int) {};
+        void memberFkn(int) {};
     };
 
     int main() 
@@ -58,23 +58,23 @@ Example use case:
 
   * Should behave close to a normal function pointer.
     Small, efficient, no heap allocation, no exceptions.
-    Does not keep track of refered object lifetime.
+    Does not keep track of referred object lifetime.
     
-  * Implement type erasure. The delegate need to only contain
+  * Implement type erasure. The delegate needs to only contain
     enough type information to do a call. Additional type information
     should be hidden from the one instantiating a delegate object.
 
   * Support several call mechanisms. Supports:
-    - Call to member function.
-    - Call to free function.
-    - Call to functors (by reference).
-    - Call to stateless lambdas.
-    - Extra call operations such as passing on stored void pointer.
+    - Call to a member function.
+    - Call to a free function.
+    - Call to a functor (by reference).
+    - Call to a stateless lambda.
+    - Extra call operations such as passing on a stored void pointer.
     
-  * It is always safe to call the delegate. In the null state a call will not
+  * It is always safe to call the delegate. In the null state, a call will not
     do anything and return a default constructed return value.
     
-  * Behave as a normal pointer type. Can be copied, compared for equality,
+  * Behave like a normal pointer type. Can be copied, compared for equality,
     called, and compared to nullptr.
     
   * Observe constness. Stored const objects references can only be called by
@@ -83,7 +83,7 @@ Example use case:
   * Delegate have two main way to set a function to be called:
     - set: Member function for setting a new value to an already existing delegate.
     - make: Static functions for constructing new delegate objects.
-    Do note that constructors isn't used for function setup. See discussion later
+    Do note that constructors aren't used for function setup. See discussion later
     on why.
     
   * Be usable with C++11 while offering more functionality for later editions.
@@ -94,25 +94,22 @@ Example use case:
   * Discourage lifetime issues. Will not allow storing a reference to a temporary
     (rvalue-reference) to objects.
     
-  * Be constexpr and exception friendly. As much as possible should be delared constexpr and noexcept. 
+  * Be constexpr and exception friendly. As much as possible should be declared constexpr and noexcept. 
   
 ## mem_fkn (Prev. MemFkn)
 
-A helper class to store a call to a member function without supplying an actual 
-object to call on. It is a stand-alone class that can encapsulate a member function.
+A helper class to store a call to a member function without supplying an actual object to call on. It is a stand-alone class that can encapsulate a member function.
 It has an 'invoke' member which accept an object and the stored member function is
 called on that object, similar to std::invoke.
 It can be stored, compared and copied around. Could e.g. be set up
-in a std::map for lookup and later supplied an object to be called on.
+in an std::map for lookup and later supplied an object to be called on.
 mem_fkn uses a single free function pointer for storage and behaves as a standard value type.
 It could be useful on its own to avoid having to deal with member pointer syntax in user code.
 
-The main intended use is as an argument to delegate. A mem_fkn and an object can be given to 
-the delegate class to tie an object to the member function and later the delegate
+The main intended use is as an argument to delegate. A mem_fkn and an object can be given to the delegate class to tie an object to the member function and later the delegate
 can be called in the normal way. mem_fkn offers a way to delay the combination of
 the object and the member function name.
-mem_fkn require more type information compared to delegate. In addition to call signature it 
-require the type of the object to call on and a bool to signal if the functions stored
+mem_fkn require more type information compared to delegate. In addition, to call the signature it requires the type of the object to call on and a bool to signal if the functions stored
 is a const method.
 
 Detailed [API for mem_fkn](doc/mem_fkn.md).
@@ -142,7 +139,7 @@ Detailed [API for mem_fkn](doc/mem_fkn.md).
         // res is now 2.
     }
 
-Base case for free functions are covered above. For member functions see below.
+The base case for free functions is covered above. For member functions see below.
 
     #include "delegate/delegate.hpp"
 
@@ -174,7 +171,7 @@ Base case for free functions are covered above. For member functions see below.
         // ...
     }
 
-For functors, the delegate expect the user to keep them alive.
+For functors, the delegate expects the user to keep them alive.
 
     #include "delegate/delegate.hpp"
 
@@ -201,8 +198,8 @@ For functors, the delegate expect the user to keep them alive.
         // res is now 4.
     }
 
-Delegate can rely on stateless lambdas to convert to function pointers. In this
-case we use runtime storage of the function pointer. Do note it will be less
+The delegate can rely on stateless lambdas to convert to function pointers. In this
+case, we use runtime storage of the function pointer. Do note it will be less
 easy for the compiler to optimize compared to a fully static setup.
 
     #include "delegate/delegate.hpp"
@@ -230,7 +227,7 @@ easy for the compiler to optimize compared to a fully static setup.
         // res is now 8.
     }
 
-For the runtime case there is no constructor template argument to give,
+For the runtime case, there is no constructor template argument to give,
 So delegate supports passing in a compatible free function pointer. This
 will accept stateless lambdas also via function pointer conversion.
 There is no lifetime issue with stateless lambdas.
@@ -248,12 +245,12 @@ There is no lifetime issue with stateless lambdas.
         res = del(1); 
         // res is now 6.
 
-		 auto del2 = delegate<int(int)>{ [](int x) -> int { return x + 6; } };
+         auto del2 = delegate<int(int)>{ [](int x) -> int { return x + 6; } };
         res = del2(1);
         // res is now 7.
     }
 
-Except the set function, one can use 'make' static functions to build delegate
+Except for the set function, one can use 'make' static functions to build delegate
 objects directly. The most common one given below.
 
     #include "delegate/delegate.hpp"
@@ -299,25 +296,23 @@ internal context pointer. e.g:
     
     int main() 
     {
- 	    Test obj;
-		delegate<int(int)> del;
+        Test obj;
+        delegate<int(int)> del;
 
-		del.set_free_with_void<fknWithVoid>(static_cast<void*>(&obj));
-		EXPECT_EQ(del(1), 3);
-		
-		del.set_free_with_object<MemberCheck, fknWithObject>(obj));
-		EXPECT_EQ(del(1), 3);
- 	}
+        del.set_free_with_void<fknWithVoid>(static_cast<void*>(&obj));
+        EXPECT_EQ(del(1), 3);
+        
+        del.set_free_with_object<MemberCheck, fknWithObject>(obj));
+        EXPECT_EQ(del(1), 3);
+     }
 
-This allow you to replace legacy callbacks one step at a time. You can 
-make a driver use delegates while the user code still uses void* context
+This allows you to replace legacy callbacks one step at a time. You can make a driver use delegates while the user code still uses void* context
 pointers. It should allow for a decoupled refactoring of the driver/user code.
-These have the same const behaviour and set/make variants as the rest of the 
-setup functions. We use longer names to ease refactoring.
+These have the same const behavior and set/make variants as the rest of the setup functions. We use longer names to ease refactoring.
 
 ## A note on skipping constructors
 
-Not using constructors to set up functions is due to how template 
+Not using constructors to set up functions is due to how a template 
 arguments are used.
 The delegate require class template arguments for the class and then
 function address argument for the set/make function template.
@@ -339,31 +334,29 @@ Another reason is that you can 'borrow' type information.
     auto del = delegate<int(int)>{};
     auto del2 = del.make<freeFkn>();
 
-For normal runtime variables there is no constructor template type to
-pass, so delegate do support passing in a runtime variable function pointer
+For normal runtime variables, there is no constructor template type to
+pass, so delegate does support passing in a runtime variable function pointer
 of the right signature. It also allows implicit conversion from stateless lambdas
 in this case.
 
 ### Alternative make_delegate free function
 
-In the spirit of smart pointer one could use 'make_delegate' to construct a 
-delegate. However there is one thing to keep in mind. 
+In the spirit of smart pointer, one could use 'make_delegate' to construct a 
+delegate. However, there is one thing to keep in mind. 
 The address of a function is given by the combination of the signature and
 the name. Hence make delegate would need to take both. E.g.
 
     auto del = make_delegate<int(int), freeFkn>();
 
-Omitting the signature could work, but would be ambiguous as soon as the function is overloaded, severly affecting maintainability.
+Omitting the signature could work, but would be ambiguous as soon as the function is overloaded, severely affecting maintainability.
 This will not offer extra functionality over using the 'make' functions
 so there is currently no effort in supporting this.
 
-## Do not take address of things in std
+## Do not take the address of things in std
 
-In C and traditional C++, function pointers and taking function addresses 
-are normal operation. Do note it can affect maintainability of your code.
-In particular, it is not allowed to to take the address of functions
-(member/free functions) in std. The standard only allow calling, not 
-taking the address of callables in std. 
+In C and traditional C++, function pointers and taking function addresses are normal operation. Do note it can affect maintainability of your code.
+In particular, it is not allowed to take the address of functions
+(member/free functions) in std. The standard only allows calls, not taking the address of callables in std. 
 It allows the implementation to change a free function
 into e.g. a functor in a compatible way.
 
@@ -375,7 +368,7 @@ It works, it will continue to work but do plan for future maintenance.
 
 From a technical side, using the template method used here, we do not actually
 take the address. It wraps the supplied call into a free function and stores an address
-to that. Hence we take an address of a user defined free function.
+to that. Hence we take an address of a user-defined free function.
 Still, when the standard changes a free function into a functor you will still
 have the same issue. Only now, the template pattern matching fails instead of
 the compiler failing to find the right function.
@@ -386,7 +379,7 @@ Delegate does require you to specify signature before accepting a function name
 so the worst problems becoming ambiguous when adding new functions should
 be mitigated.
 
-So normal engineering practices is still valid. Decide on what you consider
+So normal engineering practices are still valid. Decide on what you consider
 foreign code, put adapters on it so you have a single point to change when
 it changes. Decide what you consider stable/key interfaces in your code and let that
 be used more freely.
