@@ -23,6 +23,9 @@ allows the optimizer to see through part of the call. This also means it fulfill
 for being trivially_copyable, meaning it can safely be memcpy:d between objects.
 See e.g. [documentation on trivially copyable](https://en.cppreference.com/w/cpp/types/is_trivially_copyable).
 
+A video with a presentation about motivation and examples about the used 
+call mechanism can be [found at reddit](https://www.reddit.com/r/cpp/comments/a6yg5g/mikael_rosbacke_embedded_friendly_stdfunction/). It is given for an earlier version, but the major parts are still valid. The presentation is [here](https://slides.com/mikaelrosbacke/delegates#/).
+
 Detailed [delegate API documentation is here](doc/delegate.md). 
 
 ## Quick start
