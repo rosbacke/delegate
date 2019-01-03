@@ -316,6 +316,33 @@ Currently the delegate and mem_fkn classes are placed in the global namespace.
 The header file does not include anything else so it is possible to
 include it into another namespace. The unit test checks this and seems to work.
 
+## Performance and code generation
+
+For the moment there are no proper measurement on timing. What has been done
+is to just paste in the delegate code into [compiler explorer](https://godbolt.org/)
+and look at the assembly output. The setup used gcc 7.2.1 on ARM compiling for Cortex-M4
+and -O2 optimization.
+
+In general using static template setup compared to a runtime pointer allow the compiler to generate
+smaller code. Some specific notes:
+
+- If the compiler can see the target function body, it can inline it within the wrapper function and in that case, directly jump to the useful code.
+- Without arguments, the wrapper functions becomes one assembly instruction to just
+forward the branch in all cases.
+- With additional arguments:
+  - Member functions: No resuffling is needed, one extra instruction to load the _this_ pointer.
+  - Functors: No resuffling is needed, one extra instruction to load the _this_ pointer.
+  - Free functions: Some argument reshuffling is needed unless the target can be inlined.
+  - Runtime free functions: Resuffling is needed in the common wrapper function.
+  - Extra void/object set methods, no reshuffling is needed. Just load the pointer.
+
+- Testing callables for equal etc is often reduced down to comparing pointers. With the static
+  setup this can often be a compile time calculation.
+
+So in most cases you should get decent code generation. In the case of free, non-inlined
+functions it is worth considering to just use an ordinary function pointer unless the
+extra generality is needed.
+
 ## A note on skipping constructors
 
 Not using constructors to set up functions is due to how a template 

@@ -1,4 +1,5 @@
-namespace test_ns {
+namespace test_ns
+{
 #include "delegate/delegate.hpp"
 }
 
@@ -774,7 +775,7 @@ TEST(delegate, testMemberDisambiguateConst)
 
 TEST(delegate, test_lambda_support)
 {
-    struct Functor
+    struct Functor_
     {
         int operator()(int x, int y)
         {
@@ -782,7 +783,7 @@ TEST(delegate, test_lambda_support)
         }
     };
 
-    Functor fkn;
+    Functor_ fkn;
 
     // Create simple callback object with operator().
     auto cb = delegate<int(int, int)>::make(fkn);
@@ -846,9 +847,9 @@ TEST(delegate, special_case_that_should_work_uniqueptr)
 
     auto t = [](int x) -> std::unique_ptr<int> // No make_unique in C++11.
     {
-        std::unique_ptr<int> t{new int};
-        *t = x;
-        return t;
+        std::unique_ptr<int> t2{new int};
+        *t2 = x;
+        return t2;
     };
     del.set(t);
 

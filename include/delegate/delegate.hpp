@@ -114,7 +114,7 @@ class common<R(Args...)>
 
     using Trampoline = R (*)(DataPtr const&, Args...);
 
-    inline static constexpr R doNullCB(DataPtr const& o, Args... args)
+    inline static constexpr R doNullCB(DataPtr const&, Args...)
     {
         return nullReturnFunction<R>();
     }
@@ -407,7 +407,7 @@ class delegate<R(Args...)>
     // Adaptor function for the case where void* is not forwarded
     // to the caller. (Just a normal function pointer.)
     template <R(freeFkn)(Args...)>
-    inline static R doFreeCB(DataPtr const& v, Args... args)
+    inline static R doFreeCB(DataPtr const&, Args... args)
     {
         return freeFkn(args...);
     }
@@ -939,7 +939,7 @@ operator!=(const delegate<R(Args...)>& lhs,
 // Bite the bullet, this is how unique_ptr handle nullptr_t.
 template <typename R, typename... Args>
 constexpr bool
-operator==(details::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
+operator==(details::nullptr_t, const delegate<R(Args...)>& rhs) noexcept
 {
     return rhs.null();
 }
@@ -953,7 +953,7 @@ operator!=(details::nullptr_t lhs, const delegate<R(Args...)>& rhs) noexcept
 
 template <typename R, typename... Args>
 constexpr bool
-operator==(const delegate<R(Args...)>& lhs, details::nullptr_t rhs) noexcept
+operator==(const delegate<R(Args...)>& lhs, details::nullptr_t) noexcept
 {
     return lhs.null();
 }
