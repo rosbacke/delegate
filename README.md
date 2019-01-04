@@ -158,7 +158,7 @@ The base case for free functions is covered above. For member functions see belo
         const Test ct;
 
         del.set<Test, &Test::member>(t);
-        res = del(1); 
+        int res = del(1);
         // res is now 3.
 
         del.set<Test, &Test::cmember>(ct);
@@ -190,7 +190,7 @@ For functors, the delegate expects the user to keep them alive.
         const TestF ct;
 
         del.set(t);
-        res = del(1); 
+        int res = del(1); 
         // res is now 3.
 
         del.set(ct);
@@ -214,7 +214,7 @@ easy for the compiler to optimize compared to a fully static setup.
         delegate<int(int)> del;
 
         del.set(testFkn);
-        res = del(1); 
+        int res = del(1); 
         // res is now 6.
 
         del.set(static_cast<int(*)(int)>([](int x) -> int { return x + 6; }));
@@ -273,7 +273,7 @@ objects directly. The most common one given below.
 
         del = Del::make(static_cast<int(*)(int)>([](int x) -> int 
                  { return x + 6; }));
-        del = Del::make_fkn([](int x) -> int { return x + 6; }));
+        del = Del::make_fkn([](int x) -> int { return x + 6; });
     }
 
 ## Aid for porting legacy code
@@ -300,10 +300,12 @@ internal context pointer. e.g:
         delegate<int(int)> del;
 
         del.set_free_with_void<fknWithVoid>(static_cast<void*>(&obj));
-        EXPECT_EQ(del(1), 3);
+        int res = del(1);
+        // res is now == 3.
         
-        del.set_free_with_object<MemberCheck, fknWithObject>(obj));
-        EXPECT_EQ(del(1), 3);
+        del.set_free_with_object<Test, fknWithObject>(obj));
+        res = del(2);
+        // res is now == 4.
      }
 
 This allows you to replace legacy callbacks one step at a time. You can make a driver use delegates while the user code still uses void* context
