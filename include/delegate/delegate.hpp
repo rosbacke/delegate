@@ -475,6 +475,12 @@ class delegate<R(Args...)>
 
     ~delegate() = default;
 
+    delegate& operator=(TargetFreeCB fkn)
+    {
+        *this = delegate{fkn};
+        return *this;
+    }
+
     // Call the stored function. Requires: bool(*this) == true;
     // Will call trampoline fkn which will call the final fkn.
     constexpr R operator()(Args... args) const __attribute__((always_inline))

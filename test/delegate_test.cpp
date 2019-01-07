@@ -80,6 +80,29 @@ TEST(delegate, Free_dynamic_function_constructor)
     EXPECT_EQ(del4(1), 10);
 }
 
+TEST(delegate, implicit_conversion_lambda_construct_assign)
+{
+    auto lam = []() { return 42; };
+    delegate<int()> del1{lam};
+    delegate<int()> del2; //= lam;
+    del2 = lam;
+
+    // This is weird. Doen't work, even though del3{ lam } works and del2 = lam
+    // works... Does it have something to do with Dan Saks 'friends' talk?
+    // delegate<int()> del3 = lam;
+    // delegate<int()> del12 = []() { return 42; };
+
+    // Workaround do:
+    delegate<int()> del10{lam};
+    delegate<int()> del11 = {lam};
+    delegate<int()> del12 = {[]() { return 42; }};
+
+    auto const lam2 = []() { return 42; };
+    delegate<int()> del4{lam2};
+    delegate<int()> del5; // = lam2;
+    del5 = lam2;
+}
+
 TEST(delegate, Free_dynamic_function_set_make)
 {
     auto del = delegate<int(int)>::make(freeFkn);
