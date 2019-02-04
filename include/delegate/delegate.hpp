@@ -103,7 +103,6 @@ class common<R(Args...)>
   public:
     using FknPtr = R (*)(Args...);
     union DataPtr {
-
         constexpr DataPtr() = default;
         constexpr DataPtr(void* p) noexcept : v_ptr(p){};
         constexpr DataPtr(FknPtr p) noexcept : fkn_ptr(p){};
@@ -119,6 +118,31 @@ class common<R(Args...)>
         return nullReturnFunction<R>();
     }
 
+    inline static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
+    {
+        FknPtr fkn = o_arg.fkn_ptr;
+        return fkn(args...);
+    }
+
+    struct FknStore
+    {
+        constexpr FknStore() = default;
+        constexpr FknStore(Trampoline fkn, void* ptr)
+            : m_fkn(fkn), m_data(ptr){};
+        constexpr FknStore(FknPtr ptr)
+            : m_fkn(ptr ? &doRuntimeFkn : &doNullCB), m_data(ptr)
+        {
+        }
+
+        constexpr bool null() const noexcept
+        {
+            return m_fkn == &doNullCB;
+        }
+
+        Trampoline m_fkn = &doNullCB;
+        DataPtr m_data;
+    };
+
     // Adapter function for the member + object calling.
     template <class T, R (T::*memFkn)(Args...)>
     inline static constexpr R doMemberCB(DataPtr const& o, Args... args)
@@ -131,12 +155,6 @@ class common<R(Args...)>
     inline static constexpr R doConstMemberCB(DataPtr const& o, Args... args)
     {
         return (static_cast<T const*>(o.v_ptr)->*memFkn)(args...);
-    }
-
-    inline static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
-    {
-        FknPtr fkn = o_arg.fkn_ptr;
-        return fkn(args...);
     }
 
     static constexpr bool equal(Trampoline fkn, const DataPtr& lhs,
@@ -155,6 +173,21 @@ class common<R(Args...)>
         // platforms.
         return fkn == doRuntimeFkn ? (lhs.fkn_ptr < rhs.fkn_ptr)
                                    : (lhs.v_ptr < rhs.v_ptr);
+    }
+
+    static constexpr bool equal(const FknStore& lhs,
+                                const FknStore& rhs) noexcept
+    {
+        return lhs.m_fkn == rhs.m_fkn &&
+               equal(lhs.m_fkn, lhs.m_data, rhs.m_data);
+    }
+
+    static constexpr bool less(const FknStore& lhs,
+                               const FknStore& rhs) noexcept
+    {
+        return (lhs.null() && !rhs.null()) || lhs.m_fkn < rhs.m_fkn ||
+               (lhs.m_fkn == rhs.m_fkn &&
+                less(lhs.m_fkn, lhs.m_data, rhs.m_data));
     }
 
     // Helper struct to deduce member function types and const.
@@ -395,11 +428,13 @@ operator>(const mem_fkn<T, cnst, S>& lhs, const mem_fkn<T, cnst, S>& rhs)
 template <typename R, typename... Args>
 class delegate<R(Args...)>
 {
+  public:
     using common = details::common<R(Args...)>;
     using DataPtr = typename common::DataPtr;
+    using FknStore = typename common::FknStore;
 
-    // Signature presented to the user when calling the callback.
-    using TargetFreeCB = R (*)(Args...);
+    // Signature for call to the delegate.
+    using FknPtr = typename common::FknPtr;
 
     // Type of the function pointer for the trampoline functions.
     using Trampoline = typename common::Trampoline;
@@ -469,15 +504,25 @@ class delegate<R(Args...)>
     // General simple function pointer handling. Will accept stateless lambdas.
     // Do note it is less easy to optimize compared to static function setup.
     // Handle nullptr / 0 arguments as well.
-    constexpr delegate(TargetFreeCB fkn) noexcept
-        : m_cb(fkn == nullptr ? &common::doNullCB : &common::doRuntimeFkn),
-          m_ptr(fkn){};
+    constexpr delegate(FknPtr fkn) noexcept : m_data(fkn) {}
+
+    /**
+     * Allow writing extensions with separate make/trampoline function.
+     * We restrict to allowing 'void*̈́' as data pointer to make sure
+     * not tripping up on union aliasing issues in e.g. equal function.
+     * THe trampoline function can only access the v_ptr member of the passed
+     * union.
+     */
+    constexpr delegate(Trampoline tFkn, void* datap) noexcept
+        : m_data(tFkn, datap)
+    {
+    }
 
     ~delegate() = default;
 
-    delegate& operator=(TargetFreeCB fkn)
+    DELEGATE_CXX14CONSTEXPR delegate& operator=(FknPtr fkn) noexcept
     {
-        *this = delegate{fkn};
+        m_data = FknStore{fkn};
         return *this;
     }
 
@@ -485,19 +530,18 @@ class delegate<R(Args...)>
     // Will call trampoline fkn which will call the final fkn.
     constexpr R operator()(Args... args) const __attribute__((always_inline))
     {
-        return m_cb(m_ptr, args...);
+        return m_data.m_fkn(m_data.m_data, args...);
     }
 
     constexpr bool null() const noexcept
     {
-        return m_cb == &common::doNullCB;
+        return m_data.null();
     }
 
     static constexpr bool equal(const delegate& lhs,
                                 const delegate& rhs) noexcept
     {
-        return lhs.m_cb == rhs.m_cb &&
-               common::equal(lhs.m_cb, lhs.m_ptr, rhs.m_ptr);
+        return common::equal(lhs.m_data, rhs.m_data);
     }
 
     // Helper Functor for passing into std functions etc.
@@ -516,12 +560,9 @@ class delegate<R(Args...)>
     static constexpr bool less(const delegate& lhs,
                                const delegate& rhs) noexcept
     {
+        return common::less(lhs.m_data, rhs.m_data);
         // Ugly, but the m_ptr part should be optimized away on normal
         // platforms.
-        return (lhs.null() && !rhs.null()) //
-               || lhs.m_cb < rhs.m_cb      //
-               || (lhs.m_cb == rhs.m_cb &&
-                   common::less(lhs.m_cb, lhs.m_ptr, rhs.m_ptr));
     }
 
     // Helper Functor for passing into std::map et.al.
@@ -542,8 +583,7 @@ class delegate<R(Args...)>
 
     DELEGATE_CXX14CONSTEXPR void clear() noexcept
     {
-        m_cb = common::doNullCB;
-        m_ptr.v_ptr = nullptr;
+        m_data = FknStore{};
     }
 
     /**
@@ -553,8 +593,7 @@ class delegate<R(Args...)>
     template <R (*fkn)(Args... args)>
     DELEGATE_CXX14CONSTEXPR delegate& set() noexcept
     {
-        m_cb = &doFreeCB<fkn>;
-        m_ptr.v_ptr = nullptr;
+        m_data = FknStore(&doFreeCB<fkn>, nullptr);
         return *this;
     }
 
@@ -564,16 +603,16 @@ class delegate<R(Args...)>
     template <class T, R (T::*memFkn)(Args... args)>
     DELEGATE_CXX14CONSTEXPR delegate& set(T& tr) noexcept
     {
-        m_cb = &common::template doMemberCB<T, memFkn>;
-        m_ptr.v_ptr = static_cast<void*>(&tr);
+        m_data = FknStore(&common::template doMemberCB<T, memFkn>,
+                          static_cast<void*>(&tr));
         return *this;
     }
 
     template <class T, R (T::*memFkn)(Args... args) const>
     DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr) noexcept
     {
-        m_cb = &common::template doConstMemberCB<T, memFkn>;
-        m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
+        m_data = FknStore(&common::template doConstMemberCB<T, memFkn>,
+                          const_cast<void*>(static_cast<const void*>(&tr)));
         return *this;
     }
 
@@ -593,16 +632,15 @@ class delegate<R(Args...)>
     template <class T>
     DELEGATE_CXX14CONSTEXPR delegate& set(T& tr) noexcept
     {
-        m_cb = &doFunctor<T>;
-        m_ptr.v_ptr = static_cast<void*>(&tr);
+        m_data = FknStore(&doFunctor<T>, static_cast<void*>(&tr));
         return *this;
     }
 
     template <class T>
     DELEGATE_CXX14CONSTEXPR delegate& set(T const& tr) noexcept
     {
-        m_cb = &doConstFunctor<T>;
-        m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&tr));
+        m_data = FknStore(&doConstFunctor<T>,
+                          const_cast<void*>(static_cast<const void*>(&tr)));
         return *this;
     }
 
@@ -610,10 +648,9 @@ class delegate<R(Args...)>
     template <class T>
     constexpr delegate& set(T&&) const = delete;
 
-    DELEGATE_CXX14CONSTEXPR delegate& set(TargetFreeCB fkn) noexcept
+    DELEGATE_CXX14CONSTEXPR delegate& set(FknPtr fkn) noexcept
     {
-        m_cb = &common::doRuntimeFkn;
-        m_ptr.fkn_ptr = fkn;
+        m_data = FknStore(fkn);
         return *this;
     }
 
@@ -624,8 +661,7 @@ class delegate<R(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate&
     set(mem_fkn<T, false, R(Args...)> const& f, T& o) noexcept
     {
-        m_cb = f.ptr();
-        m_ptr = static_cast<void*>(&o);
+        m_data = FknStore(f.ptr(), static_cast<void*>(&o));
         return *this;
     }
     template <class T>
@@ -636,8 +672,8 @@ class delegate<R(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set(mem_fkn<T, true, R(Args...)> const& f,
                                           T const& o) noexcept
     {
-        m_cb = f.ptr();
-        m_ptr = const_cast<void*>(static_cast<const void*>(&o));
+        m_data =
+            FknStore(f.ptr(), const_cast<void*>(static_cast<const void*>(&o)));
         return *this;
     }
     template <class T>
@@ -665,8 +701,7 @@ class delegate<R(Args...)>
     {
         using DM =
             typename common::template DeduceMemberType<decltype(mFkn), mFkn>;
-        m_cb = DM::trampoline;
-        m_ptr = DM::castPtr(&obj);
+        m_data = FknStore(DM::trampoline, DM::castPtr(&obj));
         return *this;
     }
     template <auto mFkn>
@@ -675,8 +710,7 @@ class delegate<R(Args...)>
     {
         using DM =
             typename common::template DeduceMemberType<decltype(mFkn), mFkn>;
-        m_cb = DM::trampoline;
-        m_ptr = DM::castPtr(&obj);
+        m_data = FknStore(DM::trampoline, DM::castPtr(&obj));
         return *this;
     }
     template <auto mFkn>
@@ -684,7 +718,7 @@ class delegate<R(Args...)>
                             decltype(mFkn), mFkn>::ObjType&& obj) = delete;
 #endif
 
-    DELEGATE_CXX14CONSTEXPR delegate& set_fkn(TargetFreeCB fkn) noexcept
+    DELEGATE_CXX14CONSTEXPR delegate& set_fkn(FknPtr fkn) noexcept
     {
         return set(fkn);
     }
@@ -692,8 +726,7 @@ class delegate<R(Args...)>
     template <R (*fkn)(void*, Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set_free_with_void(void* ctx) noexcept
     {
-        m_cb = &dofreeFknWithVoidPtr<fkn>;
-        m_ptr.v_ptr = ctx;
+        m_data = FknStore(&dofreeFknWithVoidPtr<fkn>, ctx);
         return *this;
     }
 
@@ -701,8 +734,8 @@ class delegate<R(Args...)>
     DELEGATE_CXX14CONSTEXPR delegate&
     set_free_with_void(void const* ctx) noexcept
     {
-        m_cb = &dofreeFknWithVoidConstPtr<fkn>;
-        m_ptr.v_ptr = const_cast<void*>(ctx);
+        m_data =
+            FknStore(&dofreeFknWithVoidConstPtr<fkn>, const_cast<void*>(ctx));
         return *this;
     }
 
@@ -713,24 +746,24 @@ class delegate<R(Args...)>
     template <typename T, R (*fkn)(T&, Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T& o) noexcept
     {
-        m_cb = &dofreeFknWithObjectRef<T, fkn>;
-        m_ptr.v_ptr = const_cast<void*>(static_cast<const void*>(&o));
+        m_data = FknStore(&dofreeFknWithObjectRef<T, fkn>,
+                          const_cast<void*>(static_cast<const void*>(&o)));
         return *this;
     }
 
     template <typename T, R (*fkn)(T const&, Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T& o) noexcept
     {
-        m_cb = &dofreeFknWithObjectConstRef<T, fkn>;
-        m_ptr.v_ptr = static_cast<void*>(&o);
+        m_data = FknStore(&dofreeFknWithObjectConstRef<T, fkn>,
+                          static_cast<void*>(&o));
         return *this;
     }
 
     template <typename T, R (*fkn)(T const&, Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T const& o) noexcept
     {
-        m_cb = &dofreeFknWithObjectConstRef<T, fkn>;
-        m_ptr.v_ptr = const_cast<void*>(static_cast<void const*>(&o));
+        m_data = FknStore(&dofreeFknWithObjectConstRef<T, fkn>,
+                          const_cast<void*>(static_cast<void const*>(&o)));
         return *this;
     }
 
@@ -789,14 +822,14 @@ class delegate<R(Args...)>
     template <class T>
     static constexpr delegate make(T&& object) = delete;
 
-    static constexpr delegate make(TargetFreeCB fkn) noexcept
+    static constexpr delegate make(FknPtr fkn) noexcept
     {
-        return delegate{&common::doRuntimeFkn, fkn};
+        return delegate{fkn};
     }
 
-    static constexpr delegate make_fkn(TargetFreeCB fkn) noexcept
+    static constexpr delegate make_fkn(FknPtr fkn) noexcept
     {
-        return delegate{&common::doRuntimeFkn, fkn};
+        return delegate{fkn};
     }
 
     template <R (*fkn)(void*, Args...)>
@@ -906,24 +939,7 @@ class delegate<R(Args...)>
 #endif
 
   private:
-    // Create ordinary free function pointer callback.
-    constexpr delegate(Trampoline cb, void* ptr) noexcept : m_cb(cb), m_ptr(ptr)
-    {
-    }
-
-    // Create ordinary free function pointer callback.
-    constexpr delegate(Trampoline cb, const void* ptr) noexcept
-        : m_cb(cb), m_ptr(ptr)
-    {
-    }
-
-    constexpr delegate(Trampoline cb, TargetFreeCB fkn) noexcept
-        : m_cb(cb), m_ptr(fkn)
-    {
-    }
-
-    Trampoline m_cb = &common::doNullCB;
-    DataPtr m_ptr;
+    FknStore m_data;
 };
 
 template <typename R, typename... Args>
