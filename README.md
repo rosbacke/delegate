@@ -315,6 +315,39 @@ This allows you to replace legacy callbacks one step at a time. You can make a d
 pointers. It should allow for a decoupled refactoring of the driver/user code.
 These have the same const behavior and set/make variants as the rest of the setup functions. We use longer names to ease refactoring.
 
+## Extending with custom wrapper function
+
+Especially lecacy code can have weird calling conventions in their legacy callbacks.
+The delegate allow you to write external 'make' functions which supplies
+custom wrapper functions. The wrapper get access to the stored void* pointer.
+The wrapper function must follow the calling convention used internally in the delegate.
+However, this should only be used by the 'make' function.
+Example from the test suite:
+
+    static int
+    testAdapter(const delegate<int(int)>::DataPtr& v, int val)
+    {
+        int* p = static_cast<int*>(v.v_ptr);
+        std::swap(*p, val);
+        return val;
+    }
+
+    delegate<int(int)>
+    make_exchange(int& store)
+    {
+        return delegate<int(int)>{&testAdapter, static_cast<void*>(&store)};
+    }
+
+    TEST(delegate, use_extension)
+    {
+        int t = 0;
+        delegate<int(int)> del = make_exchange(t);
+        t = 2;
+        EXPECT_EQ(del(5), 2);
+        EXPECT_EQ(t, 5);
+    }
+
+
 ## Using a custom namespace for delegate
 
 Currently the delegate and mem_fkn classes are placed in the global namespace.
