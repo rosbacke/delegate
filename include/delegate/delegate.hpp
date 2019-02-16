@@ -102,26 +102,56 @@ class common<R(Args...)>
 {
   public:
     using FknPtr = R (*)(Args...);
+    union DataPtr;
+    struct FknStore;
+
+    using Trampoline = R (*)(DataPtr const&, Args...);
+
     union DataPtr {
         constexpr DataPtr() = default;
         constexpr DataPtr(void* p) noexcept : v_ptr(p){};
+
+        static constexpr bool equal(Trampoline fkn, const DataPtr& lhs,
+                                    const DataPtr& rhs) noexcept
+        {
+            // Ugly, but the m_ptr part should be optimized away on normal
+            // platforms.
+            return (fkn == doRuntimeFkn ? (lhs.fkn_ptr == rhs.fkn_ptr)
+                                        : (lhs.v_ptr == rhs.v_ptr));
+        }
+        static constexpr bool less(Trampoline fkn, const DataPtr& lhs,
+                                   const DataPtr& rhs) noexcept
+        {
+            // Ugly, but the m_ptr part should be optimized away on normal
+            // platforms.
+            return fkn == doRuntimeFkn ? (lhs.fkn_ptr < rhs.fkn_ptr)
+                                       : (lhs.v_ptr < rhs.v_ptr);
+        }
+        constexpr void* ptr() const noexcept
+        {
+            return v_ptr;
+        }
+
+      private:
+        // Whole reason for 'private' is to make sure fkn_ptr is only
+        // used when FknStore uses 'doRuntimeFkn' as adapter fkn. Will break
+        // Aliasing rules otherwise in equal/less comparisons.
+        friend struct FknStore;
         constexpr DataPtr(FknPtr p) noexcept : fkn_ptr(p){};
+
+        static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
+        {
+            FknPtr fkn = o_arg.fkn_ptr;
+            return fkn(args...);
+        }
 
         void* v_ptr = nullptr;
         FknPtr fkn_ptr;
     };
 
-    using Trampoline = R (*)(DataPtr const&, Args...);
-
     inline static constexpr R doNullCB(DataPtr const&, Args...)
     {
         return nullReturnFunction<R>();
-    }
-
-    inline static R doRuntimeFkn(DataPtr const& o_arg, Args... args)
-    {
-        FknPtr fkn = o_arg.fkn_ptr;
-        return fkn(args...);
     }
 
     struct FknStore
@@ -130,7 +160,7 @@ class common<R(Args...)>
         constexpr FknStore(Trampoline fkn, void* ptr)
             : m_fkn(fkn), m_data(ptr){};
         constexpr FknStore(FknPtr ptr)
-            : m_fkn(ptr ? &doRuntimeFkn : &doNullCB), m_data(ptr)
+            : m_fkn(ptr ? &DataPtr::doRuntimeFkn : &doNullCB), m_data(ptr)
         {
         }
 
@@ -147,39 +177,21 @@ class common<R(Args...)>
     template <class T, R (T::*memFkn)(Args...)>
     inline static constexpr R doMemberCB(DataPtr const& o, Args... args)
     {
-        return (static_cast<T*>(o.v_ptr)->*memFkn)(args...);
+        return (static_cast<T*>(o.ptr())->*memFkn)(args...);
     }
 
     // Adapter function for the member + object calling.
     template <class T, R (T::*memFkn)(Args...) const>
     inline static constexpr R doConstMemberCB(DataPtr const& o, Args... args)
     {
-        return (static_cast<T const*>(o.v_ptr)->*memFkn)(args...);
-    }
-
-    static constexpr bool equal(Trampoline fkn, const DataPtr& lhs,
-                                const DataPtr& rhs) noexcept
-    {
-        // Ugly, but the m_ptr part should be optimized away on normal
-        // platforms.
-        return (fkn == doRuntimeFkn ? (lhs.fkn_ptr == rhs.fkn_ptr)
-                                    : (lhs.v_ptr == rhs.v_ptr));
-    }
-
-    static constexpr bool less(Trampoline fkn, const DataPtr& lhs,
-                               const DataPtr& rhs) noexcept
-    {
-        // Ugly, but the m_ptr part should be optimized away on normal
-        // platforms.
-        return fkn == doRuntimeFkn ? (lhs.fkn_ptr < rhs.fkn_ptr)
-                                   : (lhs.v_ptr < rhs.v_ptr);
+        return (static_cast<T const*>(o.ptr())->*memFkn)(args...);
     }
 
     static constexpr bool equal(const FknStore& lhs,
                                 const FknStore& rhs) noexcept
     {
         return lhs.m_fkn == rhs.m_fkn &&
-               equal(lhs.m_fkn, lhs.m_data, rhs.m_data);
+               DataPtr::equal(lhs.m_fkn, lhs.m_data, rhs.m_data);
     }
 
     static constexpr bool less(const FknStore& lhs,
@@ -187,7 +199,7 @@ class common<R(Args...)>
     {
         return (lhs.null() && !rhs.null()) || lhs.m_fkn < rhs.m_fkn ||
                (lhs.m_fkn == rhs.m_fkn &&
-                less(lhs.m_fkn, lhs.m_data, rhs.m_data));
+                DataPtr::less(lhs.m_fkn, lhs.m_data, rhs.m_data));
     }
 
     // Helper struct to deduce member function types and const.
@@ -452,14 +464,14 @@ class delegate<R(Args...)>
     template <class Functor>
     inline static R doFunctor(DataPtr const& o_arg, Args... args)
     {
-        auto obj = static_cast<Functor*>(o_arg.v_ptr);
+        auto obj = static_cast<Functor*>(o_arg.ptr());
         return (*obj)(args...);
     }
 
     template <class Functor>
     inline static R doConstFunctor(DataPtr const& o_arg, Args... args)
     {
-        const Functor* obj = static_cast<Functor const*>(o_arg.v_ptr);
+        const Functor* obj = static_cast<Functor const*>(o_arg.ptr());
         return (*obj)(args...);
     }
 
@@ -468,7 +480,7 @@ class delegate<R(Args...)>
     template <class T, R(freeFkn)(T&, Args...)>
     inline static R dofreeFknWithObjectRef(DataPtr const& o, Args... args)
     {
-        T* obj = static_cast<T*>(o.v_ptr);
+        T* obj = static_cast<T*>(o.ptr());
         return freeFkn(*obj, args...);
     }
 
@@ -477,7 +489,7 @@ class delegate<R(Args...)>
     template <class T, R(freeFkn)(T const&, Args...)>
     inline static R dofreeFknWithObjectConstRef(DataPtr const& o, Args... args)
     {
-        T const* obj = static_cast<const T*>(o.v_ptr);
+        T const* obj = static_cast<const T*>(o.ptr());
         return freeFkn(*obj, args...);
     }
 
@@ -486,7 +498,7 @@ class delegate<R(Args...)>
     template <R(freeFkn)(void*, Args...)>
     inline static R dofreeFknWithVoidPtr(DataPtr const& o, Args... args)
     {
-        return freeFkn(o.v_ptr, args...);
+        return freeFkn(o.ptr(), args...);
     }
 
     // Adapter function for the free function with extra first arg
@@ -494,7 +506,7 @@ class delegate<R(Args...)>
     template <R(freeFkn)(void const*, Args...)>
     inline static R dofreeFknWithVoidConstPtr(DataPtr const& o, Args... args)
     {
-        return freeFkn(static_cast<void const*>(o.v_ptr), args...);
+        return freeFkn(static_cast<void const*>(o.ptr()), args...);
     }
 
   public:

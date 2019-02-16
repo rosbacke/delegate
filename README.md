@@ -311,42 +311,44 @@ internal context pointer. e.g:
         // res is now == 4.
      }
 
-This allows you to replace legacy callbacks one step at a time. You can make a driver use delegates while the user code still uses void* context
-pointers. It should allow for a decoupled refactoring of the driver/user code.
-These have the same const behavior and set/make variants as the rest of the setup functions. We use longer names to ease refactoring.
+This allows you to replace legacy callbacks one step at a time. 
+You can make a driver use delegates while the user code still uses void* context pointers.
+It should allow for a decoupled refactoring of the driver/user code.
+These have the same const behavior and set/make variants as the rest of the setup functions.
+We use longer names to ease refactoring.
 
 ## Extending with custom wrapper function
 
 Especially lecacy code can have weird calling conventions in their legacy callbacks.
-The delegate allow you to write external 'make' functions which supplies
-custom wrapper functions. The wrapper get access to the stored void* pointer.
-The wrapper function must follow the calling convention used internally in the delegate.
-However, this should only be used by the 'make' function.
-Example from the test suite:
+The delegate allow you to write external 'make' functions with their own custom
+adapter function. The adpater gets access to the stored void* pointer and can then freely
+use the void pointer and the parameters from the call.
+The wrapper function must follow the calling convention used internally in the delegate
+Example from the test suite where the private stateless lambda act as an adapter function:
 
-    static int
-    testAdapter(const delegate<int(int)>::DataPtr& v, int val)
+    #include "delegate/delegate.hpp"  
+    
+    delegate<int(int)> make_exchange(int& store)
     {
-        int* p = static_cast<int*>(v.v_ptr);
-        std::swap(*p, val);
-        return val;
+        using Del = delegate<int(int)>;
+        typename Del::Trampoline adapterFkn = [](const typename Del::DataPtr& v,
+                                                 int val) -> int 
+        {
+            int* p = static_cast<int*>(v.ptr());
+            std::swap(*p, val);
+            return val;
+        };
+        return Del{adapterFkn, static_cast<void*>(&store)};
     }
-
-    delegate<int(int)>
-    make_exchange(int& store)
-    {
-        return delegate<int(int)>{&testAdapter, static_cast<void*>(&store)};
-    }
-
+    
     TEST(delegate, use_extension)
     {
-        int t = 0;
+        int t = 2;
         delegate<int(int)> del = make_exchange(t);
-        t = 2;
+        EXPECT_EQ(t, 2);
         EXPECT_EQ(del(5), 2);
         EXPECT_EQ(t, 5);
     }
-
 
 ## Using a custom namespace for delegate
 

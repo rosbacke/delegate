@@ -1208,25 +1208,24 @@ TEST(delegate, with_object)
     EXPECT_EQ(del(1), 3);
 }
 
-static int
-testAdapter(const delegate<int(int)>::DataPtr& v, int val)
-{
-    int* p = static_cast<int*>(v.v_ptr);
-    std::swap(*p, val);
-    return val;
-}
-
 static delegate<int(int)>
 make_exchange(int& store)
 {
-    return delegate<int(int)>{&testAdapter, static_cast<void*>(&store)};
+    using Del = delegate<int(int)>;
+    typename Del::Trampoline adapterFkn = [](const typename Del::DataPtr& v,
+                                             int val) -> int {
+        int* p = static_cast<int*>(v.ptr());
+        std::swap(*p, val);
+        return val;
+    };
+    return Del{adapterFkn, static_cast<void*>(&store)};
 }
 
 TEST(delegate, use_extension)
 {
-    int t = 0;
+    int t = 2;
     delegate<int(int)> del = make_exchange(t);
-    t = 2;
+    EXPECT_EQ(t, 2);
     EXPECT_EQ(del(5), 2);
     EXPECT_EQ(t, 5);
 }
