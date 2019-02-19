@@ -18,6 +18,9 @@ The user needs to handle the lifetime of a referred object.
 
 In addition, the delegation object has a smaller footprint compared to common std::function 
 implementations, using only 2 pointers (free function pointer and void pointer).
+This is small enough so that a delegate stored inside a std::function will use
+small object optimization on both clang and gcc.
+
 It avoids virtual dispatch internally. That results in small object code footprint and
 allows the optimizer to see through part of the call. This also means it fulfills the requirements
 for being trivially_copyable, meaning it can safely be memcpy:d between objects.
@@ -317,14 +320,14 @@ It should allow for a decoupled refactoring of the driver/user code.
 These have the same const behavior and set/make variants as the rest of the setup functions.
 We use longer names to ease refactoring.
 
-## Extending with custom wrapper function
+## Extending with a custom wrapper function
 
 Especially lecacy code can have weird calling conventions in their legacy callbacks.
 The delegate allow you to write external 'make' functions with their own custom
 adapter function. The adpater gets access to the stored void* pointer and can then freely
 use the void pointer and the parameters from the call.
-The wrapper function must follow the calling convention used internally in the delegate
-Example from the test suite where the private stateless lambda act as an adapter function:
+The wrapper function must follow the calling convention used internally in the delegate.
+Below is an example from the test suite where the private stateless lambda act as an adapter function:
 
     #include "delegate/delegate.hpp"  
     

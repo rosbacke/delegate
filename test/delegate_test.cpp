@@ -1229,3 +1229,31 @@ TEST(delegate, use_extension)
     EXPECT_EQ(del(5), 2);
     EXPECT_EQ(t, 5);
 }
+
+
+TEST(delegate, Store_delegate_in_std_function)
+{
+    using Del = delegate<int(int)>;
+    auto del = Del::make<freeFkn>();
+    EXPECT_EQ(del(1), 6);
+
+    // Can call delegate within a std::function.
+    std::function<int(int)> sFkn{del};
+    EXPECT_EQ(sFkn(5), 10);
+
+    // Determine if the delegate require heap allocation.
+
+    Del* d_p = sFkn.target<Del>();
+    auto fn_base = reinterpret_cast<intptr_t>(&sFkn);
+    auto fn_next = reinterpret_cast<intptr_t>(&sFkn + 1);
+    auto fn_del = reinterpret_cast<intptr_t>(d_p);
+
+    if (fn_del >= fn_base && fn_del < fn_next)
+    {
+        std::cout << "Delegate within std::function. SOO active." << std::endl;
+    }
+    else
+    {
+        std::cout << "Delegate outside std::function. Heap allocated." << std::endl;
+    }
+}
