@@ -9,9 +9,7 @@ target_sources(delegate INTERFACE ${CMAKE_SOURCE_DIR}/include/delegate/delegate.
 target_include_directories(delegate INTERFACE include/)
 
 
-
-
-# Tests
+# Testing
 
 set(PICKY_FLAGS -Wall -Wextra  -Wstrict-aliasing -pedantic -Werror -Wunreachable-code -Wcast-align -Wcast-qual -Wdisabled-optimization -Wformat=2 -Winit-self -Wmissing-include-dirs -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-promo  -Wstrict-overflow=5 -Wswitch-default -Wno-unused -Wno-variadic-macros -Wno-parentheses -fdiagnostics-show-option
 )
@@ -24,11 +22,9 @@ enable_testing()
 # build it and set GTEST_ROOT to the build folder.
 find_package(GTest REQUIRED)
 
+add_test(del_11 delegate_11)
 add_test(del_14 delegate_14)
 add_test(del_17 delegate_17)
-add_test(del_11 delegate_11)
-
-link_directories(/usr/src/gtest)
 
 add_executable(delegate_11 test/delegate_test.cpp)
 add_executable(delegate_14 test/delegate_test.cpp)

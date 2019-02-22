@@ -322,7 +322,7 @@ We use longer names to ease refactoring.
 
 ## Extending with a custom wrapper function
 
-Especially lecacy code can have weird calling conventions in their legacy callbacks.
+Especially legacy code can have weird calling conventions in their callbacks.
 The delegate allow you to write external 'make' functions with their own custom
 adapter function. The adpater gets access to the stored void* pointer and can then freely
 use the void pointer and the parameters from the call.
