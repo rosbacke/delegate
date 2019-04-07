@@ -88,7 +88,7 @@ nullReturnFunction()
     return T{};
 }
 template <>
-void
+inline void
 nullReturnFunction()
 {
     return;
