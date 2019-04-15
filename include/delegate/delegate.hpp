@@ -742,6 +742,13 @@ class delegate<R(Args...)>
         return *this;
     }
 
+    template <R (*fkn)(void*, Args...)>
+    DELEGATE_CXX14CONSTEXPR delegate& set_free_with_void(decltype(nullptr)) noexcept
+    {
+        m_data = FknStore(&dofreeFknWithVoidPtr<fkn>, nullptr);
+        return *this;
+    }
+
     template <R (*fkn)(void const*, Args...)>
     DELEGATE_CXX14CONSTEXPR delegate&
     set_free_with_void(void const* ctx) noexcept
@@ -750,10 +757,6 @@ class delegate<R(Args...)>
             FknStore(&dofreeFknWithVoidConstPtr<fkn>, const_cast<void*>(ctx));
         return *this;
     }
-
-    template <R (*fkn)(void*, Args...)>
-    DELEGATE_CXX14CONSTEXPR delegate&
-    set_free_with_void(void const* ctx) noexcept = delete;
 
     template <typename T, R (*fkn)(T&, Args...)>
     DELEGATE_CXX14CONSTEXPR delegate& set_free_with_object(T& o) noexcept
@@ -857,8 +860,11 @@ class delegate<R(Args...)>
                         const_cast<void*>(ctx)};
     }
 
-    template <R (*fkn)(void const*, Args...)>
-    static constexpr delegate make_free_with_void(void* ctx) = delete;
+    template <R (*fkn)(void*, Args...)>
+    static constexpr delegate make_free_with_void(decltype(nullptr)) noexcept
+    {
+        return delegate{&dofreeFknWithVoidPtr<fkn>, nullptr};
+    }
 
     /**
      * Create a delegate to a free function, where the first argument is

@@ -1140,6 +1140,20 @@ fknWithConstVoid(void const* cctx, int val)
     return static_cast<MemberCheck const*>(cctx)->cmember(val);
 }
 
+
+int
+fknWithVoidOverload(void* , int val)
+{
+    return val - 1;
+}
+
+int
+fknWithVoidOverload(const void*, int val)
+{
+    return val - 2;
+}
+
+
 TEST(delegate, with_void)
 {
     MemberCheck mc;
@@ -1151,8 +1165,8 @@ TEST(delegate, with_void)
     del.set_free_with_void<fknWithVoid>(static_cast<void*>(&mc));
     EXPECT_EQ(del(1), 2);
 
-    // del.set_free_with_void<fknWithVoid>(static_cast<const void*>(&cmc));
-    // EXPECT_EQ(del(1), 2);
+    //del.set_free_with_void<fknWithVoid>(static_cast<const void*>(&cmc));
+    //EXPECT_EQ(del(1), 2);
 
     del.set_free_with_void<fknWithConstVoid>(static_cast<const void*>(&mc));
     EXPECT_EQ(del(1), 3);
@@ -1160,11 +1174,23 @@ TEST(delegate, with_void)
     del.set_free_with_void<fknWithConstVoid>(static_cast<void const*>(&cmc));
     EXPECT_EQ(del(1), 3);
 
+    // Make sure we handle const overloading reasonable.
+    del.set_free_with_void<fknWithVoidOverload>(static_cast<void*>(&mc));
+    EXPECT_EQ(del(0), -1);
+    del.set_free_with_void<fknWithVoidOverload>(static_cast<const void*>(&mc));
+    EXPECT_EQ(del(0), -2);
+
+    // nullptr will resolve to non const variant. User will need to cast
+    // if it doesn't work.
+    del.set_free_with_void<fknWithVoidOverload>(nullptr);
+    EXPECT_EQ(del(0), -1);
+
+
     del = Del::make_free_with_void<fknWithVoid>(static_cast<void*>(&mc));
     EXPECT_EQ(del(1), 2);
 
-    // del = Del::make_free_with_void<fknWithVoid>(static_cast<const
-    // void*>(&cmc)); EXPECT_EQ(del(1), 2);
+    //del = Del::make_free_with_void<fknWithVoid>(static_cast<const
+    //void*>(&cmc)); EXPECT_EQ(del(1), 2);
 
     del = Del::make_free_with_void<fknWithConstVoid>(
         static_cast<const void*>(&mc));
@@ -1173,6 +1199,18 @@ TEST(delegate, with_void)
     del = Del::make_free_with_void<fknWithConstVoid>(
         static_cast<void const*>(&cmc));
     EXPECT_EQ(del(1), 3);
+
+    // Make sure we handle const overloading reasonable.
+    del = Del::make_free_with_void<fknWithVoidOverload>(static_cast<void*>(&mc));
+    EXPECT_EQ(del(0), -1);
+    del = Del::make_free_with_void<fknWithVoidOverload>(static_cast<const void*>(&mc));
+    EXPECT_EQ(del(0), -2);
+
+    // nullptr will resolve to non const variant. User will need to cast
+    // if it doesn't work. It is a choice. 
+    // This is usually used with older code where const often is not used as often.
+    del = Del::make_free_with_void<fknWithVoidOverload>(nullptr);
+    EXPECT_EQ(del(0), -1);
 }
 
 TEST(delegate, with_object)
