@@ -323,7 +323,7 @@ class mem_fkn_base<R(Args...)>
 template <typename T, typename R, typename... Args>
 class mem_fkn<T, false, R(Args...)> : public mem_fkn_base<R(Args...)>
 {
-    using Base = class mem_fkn_base<R(Args...)>;
+    using Base = mem_fkn_base<R(Args...)>;
     static constexpr const bool cnst = false;
     using common = details::common<R(Args...)>;
     using DataPtr = typename common::DataPtr;
