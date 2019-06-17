@@ -66,11 +66,19 @@
  * (temporary objects) for member and functor construction.
  */
 
-#if __cplusplus < 201103L
+#ifdef _MSVC_LANG
+#define DELEGATE_CPP_VERSION _MSVC_LANG
+#define DELEGATE_ALWAYS_INLINE __forceinline
+#else
+#define DELEGATE_CPP_VERSION __cplusplus
+#define DELEGATE_ALWAYS_INLINE __attribute__((always_inline))
+#endif
+
+#if DELEGATE_CPP_VERSION < 201103L
 #error "Require at least C++11 to compile delegate"
 #endif
 
-#if __cplusplus >= 201402L
+#if DELEGATE_CPP_VERSION >= 201402L
 #define DELEGATE_CXX14CONSTEXPR constexpr
 #else
 #define DELEGATE_CXX14CONSTEXPR
@@ -315,7 +323,7 @@ class mem_fkn_base<R(Args...)>
 template <typename T, typename R, typename... Args>
 class mem_fkn<T, false, R(Args...)> : public mem_fkn_base<R(Args...)>
 {
-    using Base = class mem_fkn_base<R(Args...)>;
+    using Base = mem_fkn_base<R(Args...)>;
     static constexpr const bool cnst = false;
     using common = details::common<R(Args...)>;
     using DataPtr = typename common::DataPtr;
@@ -540,7 +548,7 @@ class delegate<R(Args...)>
 
     // Call the stored function. Requires: bool(*this) == true;
     // Will call trampoline fkn which will call the final fkn.
-    constexpr R operator()(Args... args) const __attribute__((always_inline))
+    DELEGATE_ALWAYS_INLINE constexpr R operator()(Args... args) const
     {
         return m_data.m_fkn(m_data.m_data, args...);
     }
