@@ -67,18 +67,18 @@
  */
 
 #ifdef _MSVC_LANG
-#define CPP_VERSION _MSVC_LANG
-#define ALWAYS_INLINE __forceinline
+#define DELEGATE_CPP_VERSION _MSVC_LANG
+#define DELEGATE_ALWAYS_INLINE __forceinline
 #else
-#define CPP_VERSION __cplusplus
-#define ALWAYS_INLINE __attribute__((always_inline))
+#define DELEGATE_CPP_VERSION __cplusplus
+#define DELEGATE_ALWAYS_INLINE __attribute__((always_inline))
 #endif
 
-#if CPP_VERSION < 201103L
+#if DELEGATE_CPP_VERSION < 201103L
 #error "Require at least C++11 to compile delegate"
 #endif
 
-#if CPP_VERSION >= 201402L
+#if DELEGATE_CPP_VERSION >= 201402L
 #define DELEGATE_CXX14CONSTEXPR constexpr
 #else
 #define DELEGATE_CXX14CONSTEXPR
@@ -548,7 +548,7 @@ class delegate<R(Args...)>
 
     // Call the stored function. Requires: bool(*this) == true;
     // Will call trampoline fkn which will call the final fkn.
-    ALWAYS_INLINE constexpr R operator()(Args... args) const
+    DELEGATE_ALWAYS_INLINE constexpr R operator()(Args... args) const
     {
         return m_data.m_fkn(m_data.m_data, args...);
     }
