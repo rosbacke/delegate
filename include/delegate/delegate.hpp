@@ -66,11 +66,17 @@
  * (temporary objects) for member and functor construction.
  */
 
-#if __cplusplus < 201103L
+#ifdef _MSVC_LANG
+#define CPP_VERSION _MSVC_LANG
+#else
+#define CPP_VERSION __cplusplus
+#endif
+
+#if CPP_VERSION < 201103L
 #error "Require at least C++11 to compile delegate"
 #endif
 
-#if __cplusplus >= 201402L
+#if CPP_VERSION >= 201402L
 #define DELEGATE_CXX14CONSTEXPR constexpr
 #else
 #define DELEGATE_CXX14CONSTEXPR
